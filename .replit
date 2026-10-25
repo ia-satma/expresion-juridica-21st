@@ -11,3 +11,30 @@ publicDir = "sitio"
 
 [nix]
 channel = "stable-25_05"
+
+# Tipos que el hospedaje estático no reconoce: el iPhone necesita saber que es video en partes (HLS).
+[[deployment.responseHeaders]]
+path = "/video/hls/expresion-juridica/index.m3u8"
+name = "Content-Type"
+value = "application/vnd.apple.mpegurl"
+
+[[deployment.responseHeaders]]
+path = "/video/hls/expresion-juridica-vertical/index.m3u8"
+name = "Content-Type"
+value = "application/vnd.apple.mpegurl"
+
+[[deployment.responseHeaders]]
+path = "/video/hls/expresion-juridica/parte-*"
+name = "Content-Type"
+value = "video/mp2t"
+
+[[deployment.responseHeaders]]
+path = "/video/hls/expresion-juridica-vertical/parte-*"
+name = "Content-Type"
+value = "video/mp2t"
+
+# Versión de prueba: que ningún buscador la indexe.
+[[deployment.responseHeaders]]
+path = "/*"
+name = "X-Robots-Tag"
+value = "noindex, nofollow"
