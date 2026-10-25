@@ -1,6 +1,4 @@
-# Sitio estático de Expresión Jurídica (versión de prueba, noindex). Se construye en
-# ~/JHH/sitio-21st (npm run build) y aquí solo vive el resultado, en sitio/.
-modules = ["nodejs-22"]
+modules = ["web"]
 run = "npx --yes serve@14.2.4 sitio -l 3000"
 
 [[ports]]
@@ -10,3 +8,6 @@ externalPort = 80
 [deployment]
 deploymentTarget = "static"
 publicDir = "sitio"
+
+[nix]
+channel = "stable-25_05"
