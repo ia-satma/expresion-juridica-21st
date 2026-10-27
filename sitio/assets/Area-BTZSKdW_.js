@@ -1,4 +1,4 @@
-import{r as l,j as t,R as N,a as oe}from"./index-BUozBdup.js";import{f as Pe,u as _,i as F,c as D,M as Se,a as _e,C as Me,T as Ee,B as Oe,e as z,I as Te,g as re,b as De,d as ke}from"./text-reveal-CdQJ9Ckz.js";import{P as $e}from"./parallax-image-_08t4zST.js";import{D as Le}from"./diorama-BlquMtde.js";import{areas as S,rutas as P,ui as Ue,areaPagina as y}from"./contenido-DGoq-pwH.js";import"./use-motion-value-BjnyU7PL.js";import"./use-reduced-motion-x0g7FcNi.js";import"./use-scroll-DB3ElLYS.js";/**
+import{r as l,j as t,R as N,a as oe}from"./index-JLRnd3HF.js";import{f as Pe,u as _,i as F,c as D,M as Se,a as _e,C as Me,T as Ee,B as Oe,e as z,I as Te,g as re,b as De,d as ke}from"./text-reveal-BDcwYyFk.js";import{P as $e}from"./parallax-image-BPKHsHiP.js";import{D as Le}from"./diorama-CeHZu8B7.js";import{areas as S,rutas as P,ui as Ue,areaPagina as y}from"./contenido-C8o7AkM2.js";import"./use-motion-value-BDY_kKsG.js";import"./use-reduced-motion-Bhqc8u-E.js";import"./use-scroll-CZR4VXnL.js";/**
  * @license lucide-react v0.468.0 - ISC
  *
  * This source code is licensed under the ISC license.
