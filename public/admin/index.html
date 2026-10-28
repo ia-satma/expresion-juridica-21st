@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>CMS · Expresión Jurídica</title>
+    <link rel="stylesheet" href="/admin/admin.css" />
+  </head>
+  <body>
+    <div id="app" class="app-shell" data-state="booting">
+      <section id="auth-view" class="auth-view" hidden>
+        <div class="auth-frame">
+          <div class="auth-mark" aria-hidden="true">EJ</div>
+          <p class="eyebrow">Expresión Jurídica Consultores</p>
+          <h1 id="auth-title">Acceso al CMS</h1>
+          <p id="auth-copy" class="auth-copy">Administra textos, enlaces, imágenes, video y metadatos del sitio público.</p>
+          <form id="auth-form" class="auth-form">
+            <label>Email<input id="auth-email" name="email" type="email" autocomplete="username" required placeholder="tu@email.com" /></label>
+            <label>Contraseña<input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="12" required placeholder="Mínimo 12 caracteres" /></label>
+            <button id="auth-submit" class="button button-primary" type="submit">Entrar</button>
+          </form>
+          <p id="auth-error" class="form-error" role="alert" hidden></p>
+        </div>
+      </section>
+
+      <aside id="sidebar" class="sidebar" hidden>
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">EJ</div>
+          <div><strong>Expresión Jurídica</strong><span>Content system</span></div>
+        </div>
+        <nav class="nav-stack" aria-label="Navegación del CMS">
+          <button class="nav-item is-active" data-view="dashboard"><span class="nav-glyph">⌂</span>Resumen</button>
+          <button class="nav-item" data-view="pages"><span class="nav-glyph">▤</span>Páginas</button>
+          <button class="nav-item" data-view="media"><span class="nav-glyph">◈</span>Biblioteca</button>
+          <button class="nav-item" data-view="revisions"><span class="nav-glyph">↺</span>Versiones</button>
+          <button class="nav-item" data-view="activity"><span class="nav-glyph">⌁</span>Actividad</button>
+        </nav>
+        <div class="sidebar-note">
+          <span class="status-dot"></span>
+          <div><strong>Puente público activo</strong><small>Los valores publicados se renderizan desde el CMS.</small></div>
+        </div>
+        <button id="logout-button" class="nav-item nav-logout"><span class="nav-glyph">↪</span>Cerrar sesión</button>
+      </aside>
+
+      <main id="main-view" class="main-view" hidden>
+        <header class="topbar">
+          <div class="topbar-context"><span id="view-kicker">CMS</span><strong id="view-title">Resumen</strong></div>
+          <div class="topbar-actions">
+            <a class="text-action" href="/" target="_blank" rel="noopener">Abrir sitio ↗</a>
+            <button id="publish-button" class="button button-primary" type="button">Publicar cambios <span id="draft-count" class="button-count">0</span></button>
+          </div>
+        </header>
+
+        <section id="dashboard-view" class="content-view">
+          <div class="page-intro"><div><p class="eyebrow">Centro de control editorial</p><h1>Todo el sitio, en un solo lugar.</h1><p>Explora cada página del export estático y edita sus campos desde una capa de contenido persistente.</p></div><div class="intro-mark">EJ<span>CMS</span></div></div>
+          <div id="summary-grid" class="metric-grid" aria-live="polite"></div>
+          <div class="dashboard-grid">
+            <section class="panel panel-wide"><div class="panel-heading"><div><p class="eyebrow">Mapa editorial</p><h2>Superficie pública</h2></div><button class="text-action" data-view="pages">Ver páginas →</button></div><div id="page-overview" class="page-overview"></div></section>
+            <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Última actividad</p><h2>Registro</h2></div><button class="text-action" data-view="activity">Ver todo →</button></div><div id="activity-overview" class="activity-list"></div></section>
+          </div>
+        </section>
+
+        <section id="pages-view" class="content-view" hidden>
+          <div class="view-heading"><div><p class="eyebrow">Contenido conectado</p><h1>Páginas</h1><p>Cada texto, enlace, imagen, video, alt y metadato tiene una ficha editable.</p></div><button id="refresh-inventory" class="button button-secondary">Actualizar inventario</button></div>
+          <div class="page-layout"><aside id="page-list" class="page-list panel"></aside><section id="editor-panel" class="panel editor-panel"><div class="empty-state"><strong>Selecciona una página</strong><span>Elige una ruta para abrir su inventario completo.</span></div></section></div>
+        </section>
+
+        <section id="media-view" class="content-view" hidden>
+          <div class="view-heading"><div><p class="eyebrow">Activos persistentes</p><h1>Biblioteca multimedia</h1><p>Sube archivos una vez y reutilízalos en cualquier campo de imagen, video, audio o documento.</p></div><label class="button button-primary upload-button">Subir archivo<input id="media-upload" type="file" accept="image/*,video/*,audio/*,application/pdf" hidden /></label></div>
+          <div id="media-grid" class="media-grid"></div>
+        </section>
+
+        <section id="revisions-view" class="content-view" hidden>
+          <div class="view-heading"><div><p class="eyebrow">Historial editorial</p><h1>Versiones publicadas</h1><p>Cada publicación conserva el snapshot completo para restaurar una versión anterior sin tocar el sitio a mano.</p></div></div>
+          <div id="revisions-list" class="stack-list"></div>
+        </section>
+
+        <section id="activity-view" class="content-view" hidden>
+          <div class="view-heading"><div><p class="eyebrow">Trazabilidad</p><h1>Actividad del CMS</h1><p>Acciones de acceso, edición, medios, inventario y publicación.</p></div></div>
+          <div id="activity-list" class="stack-list"></div>
+        </section>
+      </main>
+    </div>
+    <div id="toast-region" class="toast-region" aria-live="polite"></div>
+    <script type="module" src="/admin/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "name": "expresion-juridica-cms",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CMS editable para el sitio público de Expresión Jurídica Consultores",
+  "scripts": {
+    "start": "node server/index.mjs",
+    "dev": "node --watch server/index.mjs",
+    "inventory": "node server/inventory.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-auth": "^1.7.14",
+    "better-sqlite3": "^13.0.3",
+    "cheerio": "^1.2.0",
+    "express": "^5.3.0",
+    "multer": "^2.0.2"
+  }
+}

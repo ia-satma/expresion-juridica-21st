@@ -1,0 +1,6 @@
+node_modules/
+data/*
+!data/.gitkeep
+storage/media/*
+!storage/media/.gitkeep
+.DS_Store

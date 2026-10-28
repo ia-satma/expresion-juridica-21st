@@ -1,0 +1,313 @@
+const state = {
+  user: null,
+  csrf: null,
+  view: 'dashboard',
+  pages: [],
+  selectedPage: null,
+  fields: [],
+  media: [],
+  mediaTarget: null,
+  setup: false
+};
+
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[char]);
+}
+
+function formatDate(value) {
+  if (!value) return '—';
+  return new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+}
+
+function notify(message, tone = 'default') {
+  const toast = document.createElement('div');
+  toast.className = `toast ${tone}`;
+  toast.textContent = message;
+  $('#toast-region').appendChild(toast);
+  setTimeout(() => toast.remove(), 3600);
+}
+
+async function api(url, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (state.csrf && options.method && options.method !== 'GET') headers.set('x-cms-csrf', state.csrf);
+  let body = options.body;
+  if (body && !(body instanceof FormData) && typeof body === 'object') {
+    headers.set('Content-Type', 'application/json');
+    body = JSON.stringify(body);
+  }
+  const response = await fetch(url, { ...options, headers, body, credentials: 'include' });
+  if (response.status === 401 && !url.startsWith('/api/auth/')) {
+    showAuth(false);
+    throw new Error('AUTH_REQUIRED');
+  }
+  if (response.status === 204) return null;
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `HTTP_${response.status}`);
+  return payload;
+}
+
+async function authRequest(url, body) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(body)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.message || payload.error || payload.code || `HTTP_${response.status}`);
+  return payload;
+}
+
+function showAuth(setup) {
+  state.setup = setup;
+  $('#app').dataset.state = 'auth';
+  $('#auth-view').hidden = false;
+  $('#sidebar').hidden = true;
+  $('#main-view').hidden = true;
+  $('#auth-title').textContent = setup ? 'Crear cuenta propietaria' : 'Acceso al CMS';
+  $('#auth-copy').textContent = setup
+    ? 'Es el primer arranque. Crea la cuenta que tendrá control editorial del sitio.'
+    : 'Administra textos, enlaces, imágenes, video y metadatos del sitio público.';
+  $('#auth-submit').textContent = setup ? 'Crear cuenta y entrar' : 'Entrar';
+  $('#auth-password').autocomplete = setup ? 'new-password' : 'current-password';
+  $('#auth-error').hidden = true;
+}
+
+function showApp() {
+  $('#app').dataset.state = 'ready';
+  $('#auth-view').hidden = true;
+  $('#sidebar').hidden = false;
+  $('#main-view').hidden = false;
+  $('#view-title').textContent = 'Resumen';
+  navigate('dashboard');
+}
+
+function navigate(view) {
+  state.view = view;
+  const titles = { dashboard: 'Resumen', pages: 'Páginas', media: 'Biblioteca', revisions: 'Versiones', activity: 'Actividad' };
+  $('#view-title').textContent = titles[view] || 'CMS';
+  $$('.nav-item[data-view]').forEach((button) => button.classList.toggle('is-active', button.dataset.view === view));
+  $$('.content-view').forEach((section) => { section.hidden = section.id !== `${view}-view`; });
+  if (view === 'dashboard') loadDashboard();
+  if (view === 'pages') loadPages();
+  if (view === 'media') loadMedia();
+  if (view === 'revisions') loadRevisions();
+  if (view === 'activity') loadActivity();
+}
+
+function renderSummary(summary) {
+  $('#summary-grid').innerHTML = [
+    ['Páginas públicas', summary.pages, 'Rutas inventariadas'],
+    ['Campos editables', summary.fields, 'Texto, links y medios'],
+    ['Borradores', summary.draftFields, summary.draftFields ? 'Listos para publicar' : 'Sin cambios pendientes'],
+    ['Activos guardados', summary.media, 'Biblioteca persistente']
+  ].map(([label, value, note]) => `<div class="metric"><span class="metric-label">${escapeHtml(label)}</span><strong class="metric-value">${escapeHtml(value)}</strong><span class="metric-note">${escapeHtml(note)}</span></div>`).join('');
+  $('#draft-count').textContent = summary.draftFields;
+}
+
+function renderPageOverview(pages) {
+  $('#page-overview').innerHTML = pages.slice(0, 8).map((page) => `<button class="page-overview-item" data-page-route="${escapeHtml(page.page)}"><strong>${escapeHtml(page.title || page.page)}</strong><span>${escapeHtml(page.page)}</span><span class="overview-count">${escapeHtml(page.fieldCount)} <small>campos</small></span></button>`).join('') || '<div class="empty-state"><span>No hay páginas inventariadas.</span></div>';
+  $$('.page-overview-item').forEach((button) => button.addEventListener('click', () => { state.selectedPage = button.dataset.pageRoute; navigate('pages'); }));
+}
+
+function renderActivityOverview(items) {
+  $('#activity-overview').innerHTML = items.slice(0, 6).map((item) => `<div class="activity-row"><i></i><div><strong>${escapeHtml(item.action)}</strong><small>${escapeHtml(item.actor)} · ${escapeHtml(formatDate(item.at))}</small></div></div>`).join('') || '<div class="empty-state"><span>Aún no hay actividad.</span></div>';
+}
+
+async function loadDashboard() {
+  try {
+    const [summary, pages, activity] = await Promise.all([api('/api/cms/summary'), api('/api/cms/pages'), api('/api/cms/activity')]);
+    renderSummary(summary);
+    renderPageOverview(pages.pages);
+    renderActivityOverview(activity.activity);
+  } catch (error) {
+    notify('No se pudo cargar el resumen.', 'error');
+  }
+}
+
+function renderPageList() {
+  $('#page-list').innerHTML = `<div class="page-list-heading"><p class="eyebrow">Rutas</p><strong>${state.pages.length} páginas</strong></div>` + state.pages.map((page) => `<button class="page-list-item ${state.selectedPage === page.page ? 'is-active' : ''}" data-page-route="${escapeHtml(page.page)}"><span><strong>${escapeHtml(page.title || page.page)}</strong><span>${escapeHtml(page.page)} · ${escapeHtml(page.fieldCount)} campos</span></span><em>${page.draftFields || 0}</em></button>`).join('');
+  $$('.page-list-item').forEach((button) => button.addEventListener('click', () => { state.selectedPage = button.dataset.pageRoute; renderPageList(); loadEditor(); }));
+}
+
+async function loadPages() {
+  try {
+    const response = await api('/api/cms/pages');
+    state.pages = response.pages;
+    if (!state.selectedPage && state.pages[0]) state.selectedPage = state.pages[0].page;
+    renderPageList();
+    if (state.selectedPage) await loadEditor();
+  } catch (error) {
+    notify('No se pudo cargar el inventario de páginas.', 'error');
+  }
+}
+
+function fieldInput(field) {
+  const value = field.draftValue ?? field.publishedValue ?? field.original ?? '';
+  const isLong = field.attribute === 'html' || value.length > 140;
+  const className = field.attribute === 'html' ? 'html-field' : '';
+  if (isLong) return `<textarea class="${className}" data-field-id="${field.id}" aria-label="${escapeHtml(field.label)}">${escapeHtml(value)}</textarea>`;
+  return `<input class="${className}" data-field-id="${field.id}" value="${escapeHtml(value)}" aria-label="${escapeHtml(field.label)}" />`;
+}
+
+function kindLabel(field) {
+  if (field.attribute === 'html') return 'Contenido';
+  if (field.kind === 'image' || field.kind === 'video' || field.kind === 'audio') return 'Medio';
+  if (field.kind === 'link') return 'Enlace';
+  if (field.kind === 'meta') return 'SEO';
+  return field.attribute;
+}
+
+function renderEditor() {
+  const page = state.pages.find((candidate) => candidate.page === state.selectedPage);
+  const fields = state.fields;
+  if (!page) {
+    $('#editor-panel').innerHTML = '<div class="empty-state"><strong>Selecciona una página</strong><span>Elige una ruta para abrir su inventario completo.</span></div>';
+    return;
+  }
+  $('#editor-panel').innerHTML = `<div class="editor-head"><div><p class="eyebrow">${escapeHtml(page.page)}</p><h2>${escapeHtml(page.title || page.page)}</h2><p>${fields.length} campos · los cambios quedan como borrador hasta publicar.</p></div><div class="editor-actions"><a class="button button-secondary" href="${page.page || '/'}?cms_preview=1" target="_blank" rel="noopener">Vista previa ↗</a></div></div><div class="editor-tools"><input id="field-search" placeholder="Buscar texto, selector o sección…" /><select id="field-kind"><option value="">Todos los tipos</option><option value="html">Contenido</option><option value="link">Enlaces</option><option value="image">Imágenes</option><option value="video">Video</option><option value="meta">SEO</option></select></div><div id="field-list" class="field-list"></div>`;
+  renderFieldList(fields);
+  $('#field-search').addEventListener('input', filterFields);
+  $('#field-kind').addEventListener('change', filterFields);
+}
+
+function renderFieldList(fields) {
+  const list = $('#field-list');
+  if (!fields.length) { list.innerHTML = '<div class="empty-state"><strong>Sin resultados</strong><span>Prueba otra búsqueda o tipo de campo.</span></div>'; return; }
+  list.innerHTML = fields.map((field) => {
+    const hasDraft = field.draftValue != null;
+    const current = field.draftValue ?? field.publishedValue ?? field.original;
+    return `<article class="field-card" data-field-card="${field.id}" data-field-search="${escapeHtml(`${field.label} ${field.section} ${field.attribute} ${field.original}`.toLowerCase())}" data-field-kind="${escapeHtml(field.kind)}"><div class="field-meta"><div><div class="field-label">${escapeHtml(field.label)}</div><span class="field-path">${escapeHtml(field.selector)} · ${escapeHtml(field.attribute)}</span></div><span class="field-kind">${escapeHtml(kindLabel(field))}</span></div>${field.kind === 'image' || field.kind === 'video' || field.kind === 'audio' ? `<div class="field-preview-note">Puedes pegar una ruta existente o usar la biblioteca multimedia.</div>` : ''}${fieldInput({ ...field, draftValue: current, publishedValue: null })}<div class="field-foot"><span class="field-source">Original: ${escapeHtml(field.original).slice(0, 120)}</span><span class="field-status ${hasDraft ? 'is-draft' : ''}">${hasDraft ? 'Borrador pendiente' : field.publishedValue != null ? 'Publicado desde CMS' : 'Valor original'}</span><div class="field-actions"><button class="mini-button reset-field" data-field-id="${field.id}" type="button">Restaurar original</button><button class="mini-button save-field" data-field-id="${field.id}" type="button">Guardar borrador</button></div></div></article>`;
+  }).join('');
+  $$('.save-field', list).forEach((button) => button.addEventListener('click', () => saveField(button.dataset.fieldId)));
+  $$('.reset-field', list).forEach((button) => button.addEventListener('click', () => resetField(button.dataset.fieldId)));
+  $$('.field-card', list).forEach((card) => {
+    const field = fields.find((candidate) => candidate.id === card.dataset.fieldCard);
+    if (field && ['image', 'video', 'audio'].includes(field.kind)) {
+      const useButton = document.createElement('button');
+      useButton.type = 'button'; useButton.className = 'mini-button'; useButton.textContent = 'Elegir desde biblioteca';
+      useButton.addEventListener('click', () => { state.mediaTarget = field.id; navigate('media'); });
+      card.querySelector('.field-actions')?.prepend(useButton);
+    }
+  });
+}
+
+function filterFields() {
+  const search = ($('#field-search')?.value || '').toLowerCase().trim();
+  const kind = $('#field-kind')?.value || '';
+  $$('.field-card').forEach((card) => {
+    const visible = (!search || card.dataset.fieldSearch.includes(search)) && (!kind || card.dataset.fieldKind === kind);
+    card.hidden = !visible;
+  });
+}
+
+async function loadEditor() {
+  if (!state.selectedPage) return;
+  try {
+    const response = await api(`/api/cms/fields?page=${encodeURIComponent(state.selectedPage)}&limit=2000`);
+    state.fields = response.fields;
+    renderEditor();
+  } catch (error) {
+    notify('No se pudo cargar la página.', 'error');
+  }
+}
+
+function inputForField(id) {
+  return $(`[data-field-id="${CSS.escape(id)}"]`);
+}
+
+async function saveField(id) {
+  const input = inputForField(id);
+  if (!input) return;
+  try {
+    await api(`/api/cms/fields/${id}`, { method: 'POST', body: { value: input.value } });
+    notify('Borrador guardado.');
+    await Promise.all([loadEditor(), updateDraftCount()]);
+  } catch (error) { notify(`No se guardó el campo: ${error.message}`, 'error'); }
+}
+
+async function resetField(id) {
+  try {
+    await api(`/api/cms/fields/${id}`, { method: 'POST', body: { value: null } });
+    notify('Se restauró el valor original.');
+    await Promise.all([loadEditor(), updateDraftCount()]);
+  } catch (error) { notify(`No se pudo restaurar: ${error.message}`, 'error'); }
+}
+
+async function updateDraftCount() {
+  const summary = await api('/api/cms/summary');
+  $('#draft-count').textContent = summary.draftFields;
+}
+
+async function publish() {
+  if (!Number($('#draft-count').textContent || 0)) { notify('No hay cambios pendientes.'); return; }
+  try { const result = await api('/api/cms/publish', { method: 'POST', body: {} }); notify(`${result.changed} campos publicados.`); await updateDraftCount(); await loadPages(); } catch (error) { notify(`No se pudo publicar: ${error.message}`, 'error'); }
+}
+
+function renderMedia() {
+  const grid = $('#media-grid');
+  if (!state.media.length) { grid.innerHTML = '<div class="empty-state"><strong>Biblioteca vacía</strong><span>Sube una imagen, video, audio o PDF para empezar.</span></div>'; return; }
+  grid.innerHTML = state.media.map((item) => `<article class="media-card"><div class="media-preview">${item.mime.startsWith('image/') ? `<img src="${escapeHtml(item.url)}" alt="" loading="lazy" />` : item.mime.startsWith('video/') ? `<video src="${escapeHtml(item.url)}" controls preload="metadata"></video>` : `<span>${escapeHtml(item.mime.split('/')[0].toUpperCase())}</span>`}</div><div class="media-info"><strong title="${escapeHtml(item.originalName)}">${escapeHtml(item.originalName)}</strong><small>${escapeHtml(item.mime)} · ${Math.round(item.size / 1024)} KB</small><div class="media-actions"><button class="mini-button use-media" data-media-id="${item.id}" type="button">Usar en campo</button><button class="mini-button copy-media" data-media-url="${item.url}" type="button">Copiar ruta</button></div></div></article>`).join('');
+  $$('.use-media').forEach((button) => button.addEventListener('click', () => useMedia(button.dataset.mediaId)));
+  $$('.copy-media').forEach((button) => button.addEventListener('click', async () => { await navigator.clipboard?.writeText(button.dataset.mediaUrl); notify('Ruta copiada.'); }));
+}
+
+async function loadMedia() {
+  try { const response = await api('/api/cms/media'); state.media = response.media; renderMedia(); } catch (error) { notify('No se pudo cargar la biblioteca.', 'error'); }
+}
+
+async function useMedia(id) {
+  const item = state.media.find((candidate) => candidate.id === id);
+  if (!item || !state.mediaTarget) { notify('Primero abre un campo de imagen o video.', 'error'); return; }
+  const target = state.mediaTarget;
+  navigate('pages');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const input = inputForField(target);
+  if (!input) { notify('El campo ya no está disponible.', 'error'); return; }
+  input.value = item.url;
+  await saveField(target);
+  state.mediaTarget = null;
+}
+
+async function loadRevisions() {
+  try { const response = await api('/api/cms/revisions'); $('#revisions-list').innerHTML = response.revisions.map((revision) => `<div class="stack-row"><div><strong>${escapeHtml(formatDate(revision.at))}</strong><small>${escapeHtml(revision.actor)} · ${escapeHtml(revision.fieldCount)} campos publicados</small></div><button class="button button-secondary restore-revision" data-revision-id="${revision.id}" type="button">Restaurar como borrador</button></div>`).join('') || '<div class="empty-state"><span>Aún no hay versiones.</span></div>'; $$('.restore-revision').forEach((button) => button.addEventListener('click', () => restoreRevision(button.dataset.revisionId))); } catch { notify('No se pudo cargar el historial.', 'error'); }
+}
+
+async function restoreRevision(id) {
+  try { await api(`/api/cms/revisions/${id}/restore`, { method: 'POST', body: {} }); notify('Versión restaurada como borrador.'); await updateDraftCount(); navigate('pages'); } catch (error) { notify(`No se pudo restaurar: ${error.message}`, 'error'); }
+}
+
+async function loadActivity() {
+  try { const response = await api('/api/cms/activity'); $('#activity-list').innerHTML = response.activity.map((item) => `<div class="stack-row"><div><strong>${escapeHtml(item.action)}</strong><small>${escapeHtml(item.actor)} · ${escapeHtml(formatDate(item.at))}</small></div><span class="field-kind">${escapeHtml(item.detail?.page || 'CMS')}</span></div>`).join('') || '<div class="empty-state"><span>Aún no hay actividad.</span></div>'; } catch { notify('No se pudo cargar la actividad.', 'error'); }
+}
+
+async function uploadMedia(file) {
+  const form = new FormData(); form.append('file', file);
+  try { await api('/api/cms/media', { method: 'POST', body: form }); notify('Archivo guardado en la biblioteca.'); await loadMedia(); } catch (error) { notify(`No se pudo subir: ${error.message}`, 'error'); }
+}
+
+async function boot() {
+  $('#auth-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    $('#auth-error').hidden = true;
+    const body = { email: $('#auth-email').value, password: $('#auth-password').value };
+    try {
+      await authRequest(state.setup ? '/api/auth/sign-up/email' : '/api/auth/sign-in/email', { ...body, ...(state.setup ? { name: 'Administrador del CMS' } : {}) });
+      const session = await api('/api/cms/auth-state');
+      state.user = session.user; state.csrf = session.csrf; showApp();
+    } catch (error) { $('#auth-error').textContent = error.message === 'INVALID_EMAIL_OR_PASSWORD' || error.message === 'CREDENTIALS_INVALID' ? 'Email o contraseña incorrectos.' : `No se pudo completar el acceso: ${error.message}`; $('#auth-error').hidden = false; }
+  });
+  $('#logout-button').addEventListener('click', async () => { try { await api('/api/auth/sign-out', { method: 'POST', body: {} }); } finally { state.user = null; state.csrf = null; showAuth(false); } });
+  $('#publish-button').addEventListener('click', publish);
+  $('#refresh-inventory').addEventListener('click', async () => { try { await api('/api/cms/inventory/refresh', { method: 'POST', body: {} }); notify('Inventario actualizado.'); state.selectedPage = null; await loadPages(); } catch (error) { notify(`No se actualizó el inventario: ${error.message}`, 'error'); } });
+  $('#media-upload').addEventListener('change', (event) => { const file = event.target.files?.[0]; if (file) uploadMedia(file); event.target.value = ''; });
+  document.addEventListener('click', (event) => { const target = event.target.closest('[data-view]'); if (target) navigate(target.dataset.view); });
+  const me = await api('/api/cms/auth-state');
+  if (!me.authenticated) { showAuth(me.setupRequired); return; }
+  state.user = me.user; state.csrf = me.csrf; showApp();
+}
+
+boot().catch(() => showAuth(false));

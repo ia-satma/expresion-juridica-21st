@@ -1,13 +1,13 @@
-modules = ["web"]
-run = "npx --yes serve@14.2.4 sitio -l 3000"
+modules = ["nodejs-20"]
+run = "npm start"
 
 [[ports]]
 localPort = 3000
 externalPort = 80
 
 [deployment]
-deploymentTarget = "static"
-publicDir = "sitio"
+deploymentTarget = "cloudrun"
+run = ["npm", "start"]
 
 [nix]
 channel = "stable-25_05"
