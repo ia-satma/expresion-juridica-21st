@@ -5,12 +5,15 @@ const state = {
   pages: [],
   selectedPage: null,
   fields: [],
+  homeFields: [],
   media: [],
   mediaFolders: [],
   mediaFolder: '',
   mediaTarget: null,
+  mediaReturnView: 'pages',
   settings: null,
   users: [],
+  submissions: [],
   googleEnabled: false,
   setup: false
 };
@@ -116,21 +119,23 @@ function showApp() {
   const canEdit = ['owner', 'editor'].includes(state.user?.role);
   $('#publish-button').hidden = !canEdit;
   $('#media-upload')?.closest('label')?.toggleAttribute('hidden', !canEdit);
-  $('#view-title').textContent = 'Resumen';
-  navigate('dashboard');
+  $('#view-title').textContent = 'Inicio';
+  navigate('home');
 }
 
 function navigate(view) {
   state.view = view;
-  const titles = { dashboard: 'Resumen', pages: 'Páginas', media: 'Biblioteca', revisions: 'Versiones', activity: 'Actividad', settings: 'Ajustes', users: 'Usuarios' };
+  const titles = { home: 'Inicio', dashboard: 'Resumen', pages: 'Páginas', media: 'App Storage', revisions: 'Versiones', activity: 'Actividad', submissions: 'Solicitudes', settings: 'Ajustes', users: 'Usuarios' };
   $('#view-title').textContent = titles[view] || 'CMS';
   $$('.nav-item[data-view]').forEach((button) => button.classList.toggle('is-active', button.dataset.view === view));
   $$('.content-view').forEach((section) => { section.hidden = section.id !== `${view}-view`; });
+  if (view === 'home') loadHome();
   if (view === 'dashboard') loadDashboard();
   if (view === 'pages') loadPages();
   if (view === 'media') loadMedia();
   if (view === 'revisions') loadRevisions();
   if (view === 'activity') loadActivity();
+  if (view === 'submissions') loadSubmissions();
   if (view === 'settings') loadSettings();
   if (view === 'users') loadUsers();
 }
@@ -143,6 +148,8 @@ function renderSummary(summary) {
     ['Activos guardados', summary.media, 'Biblioteca persistente']
   ].map(([label, value, note]) => `<div class="metric"><span class="metric-label">${escapeHtml(label)}</span><strong class="metric-value">${escapeHtml(value)}</strong><span class="metric-note">${escapeHtml(note)}</span></div>`).join('');
   $('#draft-count').textContent = summary.draftFields;
+  const badge = $('#submission-badge');
+  if (badge) { badge.textContent = summary.submissions || 0; badge.hidden = !(summary.submissions > 0); }
 }
 
 function renderPageOverview(pages) {
@@ -163,6 +170,60 @@ async function loadDashboard() {
   } catch (error) {
     notify('No se pudo cargar el resumen.', 'error');
   }
+}
+
+function homeSectionLabel(section) {
+  const labels = {
+    SEO: 'SEO de la portada',
+    header: 'Cabecera y navegación',
+    footer: 'Pie de página',
+    '/': 'General'
+  };
+  return labels[section] || section || 'General';
+}
+
+function homeFieldCard(field) {
+  const hasDraft = field.draftValue != null;
+  const current = field.draftValue ?? field.publishedValue ?? field.original;
+  const media = ['image', 'video', 'audio'].includes(field.kind);
+  return `<article class="home-field-card" data-field-card="${field.id}" data-field-search="${escapeHtml(`${field.label} ${field.section} ${field.attribute} ${field.original}`.toLowerCase())}" data-field-kind="${escapeHtml(field.kind)}"><div class="home-field-head"><div><strong>${escapeHtml(field.label)}</strong><small>${escapeHtml(field.selector)} · ${escapeHtml(field.attribute)}</small></div><span class="field-kind">${escapeHtml(kindLabel(field))}</span></div>${media ? '<p class="home-field-hint">Este activo se puede reemplazar desde App Storage.</p>' : ''}${fieldInput({ ...field, draftValue: current, publishedValue: null })}<div class="home-field-foot"><span class="field-status ${hasDraft ? 'is-draft' : ''}">${hasDraft ? 'Borrador pendiente' : field.publishedValue != null ? 'Publicado desde CMS' : 'Original'}</span><div class="field-actions">${['owner', 'editor'].includes(state.user?.role) ? `<button class="mini-button home-reset-field" data-field-id="${field.id}" type="button">Restaurar</button><button class="mini-button home-save-field" data-field-id="${field.id}" type="button">Guardar</button>` : '<span class="field-status">Sólo lectura</span>'}</div></div></article>`;
+}
+
+function renderHomeEditor(fields) {
+  const groups = new Map();
+  fields.forEach((field) => { const key = field.section || '/'; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(field); });
+  $('#home-field-list').innerHTML = [...groups.entries()].map(([section, items]) => `<section class="home-section" data-home-section="${escapeHtml(section)}"><div class="home-section-head"><div><p class="eyebrow">Portada</p><h2>${escapeHtml(homeSectionLabel(section))}</h2></div><span>${items.length} campos</span></div><div class="home-section-grid">${items.map(homeFieldCard).join('')}</div></section>`).join('') || '<div class="empty-state"><strong>La portada no tiene campos</strong><span>Actualiza el inventario para volver a escanearla.</span></div>';
+  $$('.home-save-field').forEach((button) => button.addEventListener('click', () => saveField(button.dataset.fieldId)));
+  $$('.home-reset-field').forEach((button) => button.addEventListener('click', () => resetField(button.dataset.fieldId)));
+  $$('.home-field-card', $('#home-field-list')).forEach((card) => {
+    const field = fields.find((candidate) => candidate.id === card.dataset.fieldCard);
+    if (field && ['image', 'video', 'audio'].includes(field.kind)) {
+      const useButton = document.createElement('button');
+      useButton.type = 'button'; useButton.className = 'mini-button'; useButton.textContent = 'Elegir de App Storage';
+      useButton.addEventListener('click', () => { state.mediaTarget = field.id; state.mediaReturnView = 'home'; navigate('media'); });
+      card.querySelector('.field-actions')?.prepend(useButton);
+    }
+  });
+  filterHomeFields();
+}
+
+function filterHomeFields() {
+  const search = ($('#home-search')?.value || '').toLowerCase().trim();
+  const kind = $('#home-kind')?.value || '';
+  $$('.home-field-card').forEach((card) => {
+    card.hidden = Boolean((search && !card.dataset.fieldSearch.includes(search)) || (kind && card.dataset.fieldKind !== kind));
+  });
+  $$('.home-section').forEach((section) => { section.hidden = !section.querySelector('.home-field-card:not([hidden])'); });
+}
+
+async function loadHome() {
+  try {
+    const [fields, summary] = await Promise.all([api('/api/cms/fields?page=%2F&limit=2000'), api('/api/cms/summary')]);
+    state.homeFields = fields.fields;
+    $('#home-field-count').textContent = fields.total;
+    $('#home-draft-count').textContent = summary.draftFields;
+    renderHomeEditor(state.homeFields);
+  } catch { notify('No se pudo cargar la portada del sitio.', 'error'); }
 }
 
 function renderPageList() {
@@ -264,7 +325,7 @@ async function saveField(id) {
   try {
     await api(`/api/cms/fields/${id}`, { method: 'POST', body: { value: input.value } });
     notify('Borrador guardado.');
-    await Promise.all([loadEditor(), updateDraftCount()]);
+    await Promise.all([state.view === 'home' ? loadHome() : loadEditor(), updateDraftCount()]);
   } catch (error) { notify(`No se guardó el campo: ${error.message}`, 'error'); }
 }
 
@@ -272,7 +333,7 @@ async function resetField(id) {
   try {
     await api(`/api/cms/fields/${id}`, { method: 'POST', body: { value: null } });
     notify('Se restauró el valor original.');
-    await Promise.all([loadEditor(), updateDraftCount()]);
+    await Promise.all([state.view === 'home' ? loadHome() : loadEditor(), updateDraftCount()]);
   } catch (error) { notify(`No se pudo restaurar: ${error.message}`, 'error'); }
 }
 
@@ -312,15 +373,18 @@ async function useMedia(id) {
   const item = state.media.find((candidate) => candidate.id === id);
   if (!item || !state.mediaTarget) { notify('Primero abre un campo de imagen o video.', 'error'); return; }
   const target = state.mediaTarget;
-  navigate('pages');
+  const returnView = state.mediaReturnView || 'pages';
+  navigate(returnView);
   // `navigate` starts the async page load; await a second explicit load so the
   // selected field exists before the media URL is written into it.
-  await loadPages();
+  if (returnView === 'home') await loadHome();
+  else await loadPages();
   const input = inputForField(target);
   if (!input) { notify('El campo ya no está disponible.', 'error'); return; }
   input.value = item.url;
   await saveField(target);
   state.mediaTarget = null;
+  state.mediaReturnView = 'pages';
 }
 
 async function loadRevisions() {
@@ -333,6 +397,24 @@ async function restoreRevision(id) {
 
 async function loadActivity() {
   try { const response = await api('/api/cms/activity'); $('#activity-list').innerHTML = response.activity.map((item) => `<div class="stack-row"><div><strong>${escapeHtml(item.action)}</strong><small>${escapeHtml(item.actor)} · ${escapeHtml(formatDate(item.at))}</small></div><span class="field-kind">${escapeHtml(item.detail?.page || 'CMS')}</span></div>`).join('') || '<div class="empty-state"><span>Aún no hay actividad.</span></div>'; } catch { notify('No se pudo cargar la actividad.', 'error'); }
+}
+
+function submissionStatusLabel(status) {
+  return ({ new: 'Nueva', in_progress: 'En seguimiento', resolved: 'Resuelta', archived: 'Archivada' })[status] || status;
+}
+
+function renderSubmissions(items) {
+  $('#submissions-list').innerHTML = items.map((item) => `<article class="submission-row"><div class="submission-main"><div class="submission-top"><strong>${escapeHtml(item.name)}</strong><span class="submission-status status-${escapeHtml(item.status)}">${escapeHtml(submissionStatusLabel(item.status))}</span></div><a href="mailto:${escapeHtml(item.email)}" class="submission-email">${escapeHtml(item.email)}</a><p>${escapeHtml(item.message)}</p><small>${escapeHtml(item.subject)} · ${escapeHtml(formatDate(item.createdAt))}</small></div><div class="submission-actions"><select class="submission-status-select" data-submission-id="${escapeHtml(item.id)}" aria-label="Estado de solicitud"><option value="new" ${item.status === 'new' ? 'selected' : ''}>Nueva</option><option value="in_progress" ${item.status === 'in_progress' ? 'selected' : ''}>En seguimiento</option><option value="resolved" ${item.status === 'resolved' ? 'selected' : ''}>Resuelta</option><option value="archived" ${item.status === 'archived' ? 'selected' : ''}>Archivada</option></select><button type="button" class="mini-button save-submission" data-submission-id="${escapeHtml(item.id)}">Guardar</button></div></article>`).join('') || '<div class="empty-state"><strong>Sin solicitudes</strong><span>Las solicitudes del formulario público aparecerán aquí.</span></div>';
+  $$('.save-submission').forEach((button) => button.addEventListener('click', () => updateSubmission(button.dataset.submissionId)));
+}
+
+async function loadSubmissions() {
+  try { const status = $('#submission-status-filter')?.value || ''; const response = await api(`/api/cms/submissions${status ? `?status=${encodeURIComponent(status)}` : ''}`); state.submissions = response.submissions; renderSubmissions(state.submissions); } catch { notify('No se pudieron cargar las solicitudes.', 'error'); }
+}
+
+async function updateSubmission(id) {
+  const status = $(`.submission-status-select[data-submission-id="${CSS.escape(id)}"]`)?.value || 'new';
+  try { await api(`/api/cms/submissions/${encodeURIComponent(id)}`, { method: 'PATCH', body: { status } }); notify('Solicitud actualizada.'); await loadSubmissions(); } catch (error) { notify(`No se actualizó la solicitud: ${error.message}`, 'error'); }
 }
 
 function fillSettings(settings) {
@@ -438,9 +520,14 @@ async function boot() {
   $('#google-login').addEventListener('click', signInWithGoogle);
   $('#logout-button').addEventListener('click', async () => { try { await api('/api/auth/sign-out', { method: 'POST', body: {} }); } finally { state.user = null; state.csrf = null; showAuth(false); } });
   $('#publish-button').addEventListener('click', publish);
+  $('#home-publish').addEventListener('click', publish);
+  $('#home-search').addEventListener('input', filterHomeFields);
+  $('#home-kind').addEventListener('change', filterHomeFields);
+  $('#home-refresh').addEventListener('click', loadHome);
   $('#save-settings').addEventListener('click', saveSettings);
   $('#settings-form').addEventListener('submit', (event) => { event.preventDefault(); saveSettings(); });
   $('#refresh-users').addEventListener('click', loadUsers);
+  $('#submission-status-filter').addEventListener('change', loadSubmissions);
   $('#user-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     try {

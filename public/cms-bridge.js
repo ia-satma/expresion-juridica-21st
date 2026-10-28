@@ -95,6 +95,41 @@
     }));
   }
 
+  function bindCmsForms() {
+    document.querySelectorAll('form#consulta, form[data-cms-form="contact"]').forEach((form) => {
+      if (form.dataset.cmsBound === 'true') return;
+      form.dataset.cmsBound = 'true';
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const privacy = form.querySelector('#privacidad');
+        const status = form.querySelector('[role="status"]') || form.querySelector('p:last-of-type');
+        if (!form.checkValidity() || privacy && !privacy.checked) {
+          form.reportValidity();
+          if (status) status.textContent = 'Confirma el aviso de privacidad para enviar la solicitud.';
+          return;
+        }
+        const payload = Object.fromEntries(new FormData(form).entries());
+        payload.privacidad = Boolean(privacy?.checked);
+        payload.source = window.location.pathname;
+        const submit = form.querySelector('button[type="submit"]');
+        if (submit) submit.disabled = true;
+        if (status) status.textContent = 'Enviando solicitud…';
+        try {
+          const response = await fetch('/api/public/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(result.error || 'CONTACT_SEND_FAILED');
+          if (status) status.textContent = result.message || 'Solicitud recibida.';
+          form.reset();
+        } catch {
+          if (status) status.textContent = 'No pudimos enviar la solicitud. Inténtalo de nuevo.';
+        } finally {
+          if (submit) submit.disabled = false;
+        }
+      });
+    });
+  }
+
   fetch(`/api/cms/public?path=${encodeURIComponent(path)}&preview=${preview ? '1' : '0'}`, { credentials: 'include' })
     .then((response) => response.ok ? response.json() : null)
     .then((payload) => {
@@ -104,6 +139,9 @@
       const consent = readCookie(consentName(payload.settings?.cookie?.version));
       if (consent === 'granted') loadAnalytics(payload.settings);
       showCookieBanner(payload.settings);
+      bindCmsForms();
+      setTimeout(bindCmsForms, 0);
+      new MutationObserver(bindCmsForms).observe(document.body, { childList: true, subtree: true });
       document.documentElement.dataset.cmsReady = 'true';
     })
     .catch(() => {

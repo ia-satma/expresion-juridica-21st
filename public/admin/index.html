@@ -33,12 +33,14 @@
           <div><strong>Expresión Jurídica</strong><span>Content system</span></div>
         </div>
         <nav class="nav-stack" aria-label="Navegación del CMS">
-          <button class="nav-item is-active" data-view="dashboard"><span class="nav-glyph">⌘</span>Resumen</button>
+          <button class="nav-item is-active" data-view="home"><span class="nav-glyph">⌂</span>Inicio</button>
+          <button class="nav-item" data-view="dashboard"><span class="nav-glyph">⌘</span>Resumen</button>
           <span class="nav-section-title"><span>Contenido del sitio</span><b>⌄</b></span>
           <button class="nav-item" data-view="pages"><span class="nav-glyph">▤</span>Páginas</button>
           <button class="nav-item" data-view="media"><span class="nav-glyph">▧</span>App Storage</button>
           <button class="nav-item" data-view="revisions"><span class="nav-glyph">◷</span>Versiones</button>
           <span class="nav-section-title"><span>Registros recibidos</span><b>⌄</b></span>
+          <button class="nav-item" data-view="submissions"><span class="nav-glyph">✉</span>Solicitudes <span id="submission-badge" class="nav-badge" hidden>0</span></button>
           <button class="nav-item" data-view="activity"><span class="nav-glyph">▱</span>Actividad</button>
           <span class="nav-section-title"><span>Configuración</span><b>⌄</b></span>
           <button class="nav-item" data-view="settings" data-owner-only><span class="nav-glyph">⌘</span>SEO, Analytics y privacidad</button>
@@ -59,6 +61,13 @@
             <button id="publish-button" class="button button-primary" type="button">Publicar cambios <span id="draft-count" class="button-count">0</span></button>
           </div>
         </header>
+
+        <section id="home-view" class="content-view">
+          <div class="home-intro"><div><p class="eyebrow">Editor de portada · estilo WordPress</p><h1>Inicio</h1><p>Administra la portada completa por secciones. Cada texto, enlace, imagen, video, SEO y bloque visible se guarda como borrador y se publica desde aquí.</p></div><div class="home-intro-actions"><a class="button button-secondary" href="/?cms_preview=1" target="_blank" rel="noopener">Vista previa ↗</a><button id="home-publish" class="button button-primary" type="button">Publicar cambios <span id="home-draft-count" class="button-count">0</span></button></div></div>
+          <div class="home-summary"><div class="home-summary-card"><span>Portada conectada</span><strong>／</strong><small>Ruta principal del sitio</small></div><div class="home-summary-card"><span>Campos editables</span><strong id="home-field-count">0</strong><small>Texto, medios, links y SEO</small></div><div class="home-summary-card"><span>Estado editorial</span><strong>CMS</strong><small>Publicación con historial</small></div></div>
+          <div class="home-tools panel"><div class="storage-search"><span>⌕</span><input id="home-search" placeholder="Buscar en la portada…" /></div><select id="home-kind" aria-label="Filtrar campos de portada"><option value="">Todas las categorías</option><option value="html">Contenido</option><option value="link">Enlaces</option><option value="image">Imágenes</option><option value="video">Video</option><option value="meta">SEO</option></select><button id="home-refresh" class="button button-secondary" type="button">Actualizar campos</button></div>
+          <div id="home-field-list" class="home-field-list"></div>
+        </section>
 
         <section id="dashboard-view" class="content-view">
           <div class="page-intro"><div><p class="eyebrow">Centro de control editorial</p><h1>Todo el sitio, en un solo lugar.</h1><p>Explora cada página del export estático y edita sus campos desde una capa de contenido persistente.</p></div><div class="intro-mark">EJ<span>CMS</span></div></div>
@@ -89,6 +98,11 @@
         <section id="activity-view" class="content-view" hidden>
           <div class="view-heading"><div><p class="eyebrow">Trazabilidad</p><h1>Actividad del CMS</h1><p>Acciones de acceso, edición, medios, inventario y publicación.</p></div></div>
           <div id="activity-list" class="stack-list"></div>
+        </section>
+
+        <section id="submissions-view" class="content-view" hidden>
+          <div class="view-heading"><div><p class="eyebrow">Registros recibidos</p><h1>Solicitudes de consulta</h1><p>El formulario público está conectado al CMS. Revisa, clasifica y da seguimiento a cada solicitud.</p></div><select id="submission-status-filter" class="button button-secondary" aria-label="Filtrar solicitudes"><option value="">Todas</option><option value="new">Nuevas</option><option value="in_progress">En seguimiento</option><option value="resolved">Resueltas</option><option value="archived">Archivadas</option></select></div>
+          <div id="submissions-list" class="submissions-list panel"></div>
         </section>
 
         <section id="settings-view" class="content-view" hidden>

@@ -62,6 +62,7 @@ const defaultStore = () => ({
   draftOverrides: {},
   publishedOverrides: {},
   media: [],
+  submissions: [],
   revisions: [],
   audit: [],
   settings: defaultSettings()
@@ -426,6 +427,33 @@ app.all('/api/auth/*splat', toNodeHandler(auth));
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
+app.post('/api/public/contact', (req, res) => {
+  const body = req.body || {};
+  if (String(body.website || '').trim()) return res.status(400).json({ error: 'INVALID_REQUEST' });
+  const name = String(body.nombre || '').trim().slice(0, 160);
+  const email = String(body.correo || '').trim().toLowerCase().slice(0, 254);
+  const subject = String(body.materia || '').trim().slice(0, 100);
+  const message = String(body.mensaje || '').trim().slice(0, 600);
+  const consent = Boolean(body.privacidad);
+  if (!name || !/^\S+@\S+\.\S+$/.test(email) || !subject || !message || !consent) return res.status(422).json({ error: 'CONTACT_FIELDS_INVALID' });
+  const item = {
+    id: crypto.randomUUID(),
+    name,
+    email,
+    subject,
+    message,
+    consentAt: now(),
+    status: 'new',
+    createdAt: now(),
+    source: String(body.source || '/contacto/').slice(0, 200),
+    userAgent: String(req.get('user-agent') || '').slice(0, 300)
+  };
+  store.submissions.unshift(item);
+  store.submissions = store.submissions.slice(0, 2000);
+  writeStore();
+  res.status(201).json({ ok: true, id: item.id, message: 'Solicitud recibida. Nos pondremos en contacto pronto.' });
+});
+
 app.get('/healthz', (_req, res) => res.json({ ok: true, service: 'expresion-juridica-cms', inventory: inventory.pages.length }));
 
 app.get('/api/cms/auth-options', (_req, res) => {
@@ -467,6 +495,7 @@ app.get('/api/cms/summary', requireAuth, (_req, res) => {
     draftFields: draftCount,
     publishedFields: publishedCount,
     media: store.media.filter((item) => !item.deletedAt).length,
+    submissions: store.submissions.filter((item) => item.status === 'new').length,
     revisions: store.revisions.length,
     auditEvents: store.audit.length,
     lastPublishedAt: store.revisions[0]?.at || null,
@@ -641,6 +670,23 @@ app.delete('/api/cms/media/:id', requireAuth, requireEditor, requireCsrf, (req, 
 
 app.get('/api/cms/activity', requireAuth, (_req, res) => {
   res.json({ activity: store.audit.slice(0, 100) });
+});
+
+app.get('/api/cms/submissions', requireAuth, (req, res) => {
+  const status = String(req.query.status || '').trim();
+  const submissions = store.submissions.filter((item) => !status || item.status === status).map(({ userAgent, ...item }) => item);
+  res.json({ submissions, counts: store.submissions.reduce((map, item) => { map[item.status] = (map[item.status] || 0) + 1; return map; }, {}) });
+});
+
+app.patch('/api/cms/submissions/:id', requireAuth, requireEditor, requireCsrf, (req, res) => {
+  const item = store.submissions.find((candidate) => candidate.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'SUBMISSION_NOT_FOUND' });
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, 'status') && ['new', 'in_progress', 'resolved', 'archived'].includes(req.body.status)) item.status = req.body.status;
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, 'notes')) item.notes = String(req.body.notes || '').slice(0, 2000);
+  item.updatedAt = now();
+  audit('submission.update', req.cmsUser, { submissionId: item.id, status: item.status });
+  writeStore();
+  res.json({ ok: true, submission: item });
 });
 
 function cmsRoleForUser(user) {
