@@ -9,12 +9,14 @@ const HTML_EXTENSIONS = new Set(['.html', '.htm']);
 const CONTENT_TAGS = new Set([
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'dt', 'dd',
   'figcaption', 'address', 'blockquote', 'button', 'label', 'summary',
-  'title', 'caption', 'legend'
+  'title', 'caption', 'legend', 'small', 'time', 'strong', 'em', 'b',
+  'i', 'code', 'cite', 'mark', 'th', 'td', 'option'
 ]);
 const ATTR_FIELDS = [
   ['a[href]', 'href', 'link'],
   ['area[href]', 'href', 'link'],
   ['img[src]', 'src', 'image'],
+  ['img[srcset]', 'srcset', 'image'],
   ['img[alt]', 'alt', 'alt'],
   ['source[src]', 'src', 'video'],
   ['source[srcset]', 'srcset', 'video'],
@@ -22,8 +24,11 @@ const ATTR_FIELDS = [
   ['video[poster]', 'poster', 'image'],
   ['audio[src]', 'src', 'audio'],
   ['iframe[src]', 'src', 'embed'],
+  ['embed[src]', 'src', 'embed'],
+  ['object[data]', 'data', 'embed'],
   ['input[placeholder]', 'placeholder', 'form'],
   ['textarea[placeholder]', 'placeholder', 'form'],
+  ['input[value]', 'value', 'form'],
   ['*[aria-label]', 'aria-label', 'accessibility'],
   ['*[title]', 'title', 'accessibility']
 ];
@@ -122,7 +127,7 @@ export function inventoryHtml(html, page) {
   const fields = [];
   const seen = new Set();
 
-  $('title, h1, h2, h3, h4, h5, h6, p, li, dt, dd, figcaption, address, blockquote, a, button, label, summary, caption, legend').each((_, element) => {
+  $('title, h1, h2, h3, h4, h5, h6, p, li, dt, dd, figcaption, address, blockquote, a, button, label, summary, caption, legend, small, time, strong, em, b, i, code, cite, mark, th, td, option').each((_, element) => {
     const tag = element.name;
     const selector = cssPath($, element);
     const text = textFromElement($, element);

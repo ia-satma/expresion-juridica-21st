@@ -4,3 +4,7 @@ data/*
 storage/media/*
 !storage/media/.gitkeep
 .DS_Store
+._*
+.env
+.env.*
+!.env.example

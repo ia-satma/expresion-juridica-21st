@@ -1,12 +1,11 @@
 import fs from 'node:fs';
-import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import express from 'express';
 import multer from 'multer';
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
 import { buildInventory, fileForRoute, inventoryHtml, routeFromFile, SITE_DIR } from './inventory.mjs';
-import { auth, migrateAuthDatabase } from './auth.mjs';
+import { auth, authDatabase, migrateAuthDatabase } from './auth.mjs';
 
 const ROOT = process.cwd();
 const PORT = Number(process.env.PORT || 3000);
@@ -14,32 +13,81 @@ const DATA_DIR = path.join(ROOT, 'data');
 const MEDIA_DIR = path.join(ROOT, 'storage', 'media');
 const ADMIN_DIR = path.join(ROOT, 'public', 'admin');
 const STORE_FILE = path.join(DATA_DIR, 'cms.json');
+const OWNER_EMAIL = String(process.env.CMS_OWNER_EMAIL || 'ia@satma.mx').trim().toLowerCase();
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(MEDIA_DIR, { recursive: true });
 
+const defaultSettings = () => ({
+  siteName: 'Expresión Jurídica Consultores',
+  siteDescription: 'Asesoría y defensa jurídica especializada para personas, empresas e instituciones.',
+  defaultLocale: 'es-MX',
+  canonicalBaseUrl: 'https://expresion-juridica-21-st.replit.app',
+  indexingEnabled: false,
+  searchConsoleVerification: '',
+  analytics: {
+    enabled: false,
+    measurementId: ''
+  },
+  cookie: {
+    version: '1.0',
+    title: 'Privacidad y cookies',
+    text: 'Usamos cookies necesarias para que el sitio funcione. Con tu permiso, activamos analítica para comprender el uso del sitio.',
+    acceptLabel: 'Aceptar analítica',
+    rejectLabel: 'Rechazar analítica',
+    policyUrl: '/politica-de-cookies/'
+  },
+  geo: {
+    businessName: 'Expresión Jurídica Consultores',
+    phone: '',
+    email: 'consultoria@expresionjuridica.com',
+    street: 'Boulevard Europa No. 33, Fracc. Montemagno',
+    locality: 'Xalapa',
+    region: 'Veracruz',
+    country: 'MX',
+    latitude: '',
+    longitude: ''
+  },
+  navigation: {
+    visibility: {}
+  }
+});
+
 const defaultStore = () => ({
   version: 1,
   createdAt: new Date().toISOString(),
-  users: [],
   authAdmins: [],
   draftOverrides: {},
   publishedOverrides: {},
   media: [],
   revisions: [],
   audit: [],
-  settings: {
-    siteName: 'Expresión Jurídica Consultores',
-    defaultLocale: 'es-MX',
-    noindex: true
-  }
+  settings: defaultSettings()
 });
+
+function mergeSettings(input = {}) {
+  const defaults = defaultSettings();
+  return {
+    ...defaults,
+    ...input,
+    analytics: { ...defaults.analytics, ...(input.analytics || {}) },
+    cookie: { ...defaults.cookie, ...(input.cookie || {}) },
+    geo: { ...defaults.geo, ...(input.geo || {}) },
+    navigation: { ...defaults.navigation, ...(input.navigation || {}) }
+  };
+}
 
 function readStore() {
   if (!fs.existsSync(STORE_FILE)) return defaultStore();
   try {
     const parsed = JSON.parse(fs.readFileSync(STORE_FILE, 'utf8'));
-    return { ...defaultStore(), ...parsed, authAdmins: Array.isArray(parsed.authAdmins) ? parsed.authAdmins : [] };
+    const base = defaultStore();
+    return {
+      ...base,
+      ...parsed,
+      authAdmins: Array.isArray(parsed.authAdmins) ? parsed.authAdmins : [],
+      settings: mergeSettings(parsed.settings)
+    };
   } catch (error) {
     console.error('[cms] No se pudo leer data/cms.json; se usa una copia vacía.', error.message);
     return defaultStore();
@@ -74,6 +122,86 @@ function parseCookies(req) {
 function cmsAdminFor(session) {
   if (!session?.user?.id) return null;
   return store.authAdmins.find((admin) => admin.userId === session.user.id) || null;
+}
+
+function authRoleForCmsRole(role) {
+  return role === 'owner' ? 'admin' : 'user';
+}
+
+function syncBetterAuthRole(userId, cmsRole) {
+  try {
+    authDatabase.prepare('UPDATE "user" SET role = ? WHERE id = ?').run(authRoleForCmsRole(cmsRole), userId);
+  } catch (error) {
+    console.error('[cms-auth] no se pudo sincronizar el rol Better Auth', error.message);
+  }
+}
+
+function publicSettings() {
+  const { siteName, siteDescription, defaultLocale, canonicalBaseUrl, indexingEnabled, searchConsoleVerification, analytics, cookie, geo, navigation } = store.settings;
+  return {
+    siteName,
+    siteDescription,
+    defaultLocale,
+    canonicalBaseUrl,
+    indexingEnabled: Boolean(indexingEnabled),
+    searchConsoleVerification,
+    analytics: {
+      enabled: Boolean(analytics?.enabled),
+      measurementId: String(analytics?.measurementId || '')
+    },
+    cookie: { ...cookie },
+    geo: { ...geo },
+    navigation: { visibility: { ...(navigation?.visibility || {}) } }
+  };
+}
+
+function normalizeSettings(input = {}) {
+  const next = mergeSettings(input);
+  const text = (value, max = 1000) => String(value ?? '').trim().slice(0, max);
+  const baseUrl = text(next.canonicalBaseUrl, 500);
+  let canonicalBaseUrl = defaultSettings().canonicalBaseUrl;
+  try {
+    const parsed = new URL(baseUrl);
+    if (['http:', 'https:'].includes(parsed.protocol)) canonicalBaseUrl = parsed.toString().replace(/\/$/, '');
+  } catch {
+    // Keep the safe production default when an invalid canonical URL is submitted.
+  }
+  const visibility = {};
+  for (const [key, value] of Object.entries(next.navigation?.visibility || {})) {
+    const cleanKey = text(key, 220);
+    if (cleanKey) visibility[cleanKey] = Boolean(value);
+  }
+  const measurementId = text(next.analytics?.measurementId, 80).replace(/[^A-Za-z0-9_-]/g, '');
+  const verification = text(next.searchConsoleVerification, 120).replace(/[^A-Za-z0-9_-]/g, '');
+  return {
+    siteName: text(next.siteName, 180) || defaultSettings().siteName,
+    siteDescription: text(next.siteDescription, 320),
+    defaultLocale: text(next.defaultLocale, 20) || 'es-MX',
+    canonicalBaseUrl,
+    indexingEnabled: Boolean(next.indexingEnabled),
+    searchConsoleVerification: verification,
+    analytics: { enabled: Boolean(next.analytics?.enabled), measurementId },
+    cookie: {
+      version: text(next.cookie?.version, 40) || '1.0',
+      title: text(next.cookie?.title, 140),
+      text: text(next.cookie?.text, 500),
+      acceptLabel: text(next.cookie?.acceptLabel, 80),
+      rejectLabel: text(next.cookie?.rejectLabel, 80),
+      policyUrl: text(next.cookie?.policyUrl, 500) || '/politica-de-cookies/'
+    },
+    geo: {
+      businessName: text(next.geo?.businessName, 180),
+      phone: text(next.geo?.phone, 60),
+      email: text(next.geo?.email, 160),
+      street: text(next.geo?.street, 180),
+      locality: text(next.geo?.locality, 100),
+      region: text(next.geo?.region, 100),
+      country: text(next.geo?.country, 10),
+      latitude: text(next.geo?.latitude, 30),
+      longitude: text(next.geo?.longitude, 30)
+    },
+    navigation: { visibility }
+  };
 }
 
 async function authSessionFor(req) {
@@ -113,6 +241,16 @@ async function requireAuth(req, res, next) {
   next();
 }
 
+function requireCmsRole(...roles) {
+  return (req, res, next) => {
+    if (!roles.includes(req.cmsAdmin?.role)) return res.status(403).json({ error: 'ROLE_REQUIRED', roles });
+    next();
+  };
+}
+
+const requireEditor = requireCmsRole('owner', 'editor');
+const requireOwner = requireCmsRole('owner');
+
 function requireCsrf(req, res, next) {
   const csrf = parseCookies(req).cms_csrf;
   if (!csrf || req.get('x-cms-csrf') !== csrf) return res.status(403).json({ error: 'CSRF_INVALID' });
@@ -131,12 +269,23 @@ function sanitizeMarkup(value) {
     .replace(/(href|src)\s*=\s*("|')\s*javascript:[^"']*("|')/gi, '$1=$2#$3');
 }
 
+function sanitizeAttribute(attribute, value) {
+  const raw = String(value ?? '');
+  if (['href', 'src', 'poster', 'data'].includes(attribute) && /^\s*javascript:/i.test(raw)) return '#';
+  if (attribute === 'srcset' && /javascript:/i.test(raw)) return raw.replace(/javascript:[^,\s]+/gi, '#');
+  return raw;
+}
+
 function applyField($, field, value) {
   const target = $(field.selector).first();
   if (!target.length) return;
   if (field.attribute === 'html') target.html(sanitizeMarkup(value));
-  else if (field.attribute === 'text') target.text(String(value));
-  else target.attr(field.attribute, String(value));
+  else if (field.attribute === 'text') {
+    const textNode = target.contents().toArray().find((node) => node.type === 'text' && String(node.data || '').trim());
+    if (textNode) textNode.data = String(value);
+    else target.text(String(value));
+  }
+  else target.attr(field.attribute, sanitizeAttribute(field.attribute, value));
 }
 
 function injectBridge($) {
@@ -144,6 +293,67 @@ function injectBridge($) {
   if ($('script[data-cms-bridge="true"]').length) return;
   if ($('body').length) $('body').append(script);
   else $('html').append(script);
+}
+
+function navigationKey($, element) {
+  const href = $(element).attr('href');
+  if (href) return `href:${href}`;
+  const text = $(element).clone().find('svg').remove().end().text().replace(/\s+/g, ' ').trim().toLowerCase();
+  return text ? `text:${text}` : '';
+}
+
+function applyNavigation($) {
+  const visibility = store.settings.navigation?.visibility || {};
+  $('header nav a, header nav button, footer nav a').each((_, element) => {
+    const key = navigationKey($, element);
+    if (!key) return;
+    $(element).attr('data-cms-menu-key', key);
+    if (Object.prototype.hasOwnProperty.call(visibility, key)) {
+      if (visibility[key] === false) $(element).attr('hidden', 'hidden');
+      else $(element).removeAttr('hidden');
+    }
+  });
+}
+
+function setMeta($, selector, attributes) {
+  $(selector).remove();
+  const element = $('<meta>').attr(attributes);
+  $('head').append(element);
+}
+
+function injectSiteMetadata($, page, preview = false) {
+  const settings = store.settings;
+  const base = String(settings.canonicalBaseUrl || '').replace(/\/$/, '');
+  const canonical = `${base}${page === '/' ? '/' : page}`;
+  setMeta($, 'meta[name="robots"]', {
+    name: 'robots',
+    content: preview ? 'noindex,nofollow,noarchive' : settings.indexingEnabled ? 'index,follow' : 'noindex,nofollow'
+  });
+  if (settings.searchConsoleVerification) setMeta($, 'meta[name="google-site-verification"]', { name: 'google-site-verification', content: settings.searchConsoleVerification });
+  $('link[rel="canonical"]').remove();
+  if (base) $('head').append($('<link>').attr({ rel: 'canonical', href: canonical }));
+  setMeta($, 'meta[property="og:url"]', { property: 'og:url', content: canonical });
+  const geo = settings.geo || {};
+  const schema = {
+    '@context': 'https://schema.org',
+    '@type': 'LegalService',
+    name: geo.businessName || settings.siteName,
+    url: base,
+    description: settings.siteDescription,
+    areaServed: { '@type': 'Country', name: 'México' },
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: geo.street,
+      addressLocality: geo.locality,
+      addressRegion: geo.region,
+      addressCountry: geo.country || 'MX'
+    }
+  };
+  if (geo.email) schema.email = geo.email;
+  if (geo.phone) schema.telephone = geo.phone;
+  if (geo.latitude && geo.longitude) schema.geo = { '@type': 'GeoCoordinates', latitude: geo.latitude, longitude: geo.longitude };
+  $('script[type="application/ld+json"][data-cms-schema="true"]').remove();
+  $('head').append(`<script type="application/ld+json" data-cms-schema="true">${JSON.stringify(schema).replace(/</g, '\\u003c')}</script>`);
 }
 
 function renderHtml(file, preview = false) {
@@ -154,10 +364,9 @@ function renderHtml(file, preview = false) {
   for (const field of fields) {
     if (Object.prototype.hasOwnProperty.call(overrides, field.id)) applyField($, field, overrides[field.id]);
   }
+  injectSiteMetadata($, page, preview);
+  applyNavigation($);
   injectBridge($);
-  if (preview) {
-    $('head').prepend('<meta name="robots" content="noindex,nofollow,noarchive" data-cms-preview="true">');
-  }
   return $.html();
 }
 
@@ -199,15 +408,18 @@ app.get('/healthz', (_req, res) => res.json({ ok: true, service: 'expresion-juri
 
 app.get('/api/cms/auth-state', async (req, res) => {
   const session = await authSessionFor(req);
-  if (!session?.user) return res.json({ authenticated: false, setupRequired: store.authAdmins.length === 0 });
+  if (!session?.user) return res.json({ authenticated: false, setupRequired: store.authAdmins.length === 0, ownerEmail: OWNER_EMAIL });
   let admin = cmsAdminFor(session);
   if (!admin && store.authAdmins.length === 0) {
+    if (String(session.user.email || '').toLowerCase() !== OWNER_EMAIL) return res.status(403).json({ error: 'OWNER_EMAIL_REQUIRED', ownerEmail: OWNER_EMAIL });
     admin = { userId: session.user.id, email: session.user.email, role: 'owner', createdAt: now() };
     store.authAdmins.push(admin);
+    syncBetterAuthRole(session.user.id, admin.role);
     audit('auth.bootstrap', session.user);
     writeStore();
   }
   if (!admin) return res.status(403).json({ error: 'CMS_ACCESS_NOT_GRANTED' });
+  syncBetterAuthRole(session.user.id, admin.role);
   const csrf = setCsrfCookie(res);
   res.json({ authenticated: true, setupRequired: false, csrf, user: { ...session.user, role: admin.role } });
 });
@@ -227,6 +439,25 @@ app.get('/api/cms/summary', requireAuth, (_req, res) => {
     lastPublishedAt: store.revisions[0]?.at || null,
     inventoryGeneratedAt: inventory.generatedAt
   });
+});
+
+app.get('/api/cms/settings', requireAuth, (_req, res) => {
+  res.json({ settings: store.settings, editable: _req.cmsAdmin.role === 'owner' });
+});
+
+app.put('/api/cms/settings', requireAuth, requireOwner, requireCsrf, (req, res) => {
+  const input = req.body?.settings || req.body || {};
+  store.settings = normalizeSettings({
+    ...store.settings,
+    ...input,
+    analytics: { ...store.settings.analytics, ...(input.analytics || {}) },
+    cookie: { ...store.settings.cookie, ...(input.cookie || {}) },
+    geo: { ...store.settings.geo, ...(input.geo || {}) },
+    navigation: { ...store.settings.navigation, ...(input.navigation || {}) }
+  });
+  audit('settings.update', req.cmsUser, { indexingEnabled: store.settings.indexingEnabled, analyticsEnabled: store.settings.analytics.enabled });
+  writeStore();
+  res.json({ ok: true, settings: store.settings });
 });
 
 app.get('/api/cms/pages', requireAuth, (_req, res) => {
@@ -271,13 +502,13 @@ app.get('/api/cms/public', (req, res) => {
     const map = {};
     for (const field of inventory.fields) {
       if (field.page !== page || !Object.prototype.hasOwnProperty.call(overrides, field.id)) continue;
-      map[field.id] = field.attribute === 'html' ? sanitizeMarkup(overrides[field.id]) : overrides[field.id];
+      map[field.id] = field.attribute === 'html' ? sanitizeMarkup(overrides[field.id]) : sanitizeAttribute(field.attribute, overrides[field.id]);
     }
-    res.set('Cache-Control', 'no-store').json({ page, preview, overrides: map });
+    res.set('Cache-Control', 'no-store').json({ page, preview, overrides: map, settings: publicSettings() });
   }).catch(() => res.status(500).json({ error: 'AUTH_STATE_ERROR' }));
 });
 
-app.post('/api/cms/fields/:id', requireAuth, requireCsrf, (req, res) => {
+app.post('/api/cms/fields/:id', requireAuth, requireEditor, requireCsrf, (req, res) => {
   const field = findField(req.params.id);
   if (!field) return res.status(404).json({ error: 'FIELD_NOT_FOUND' });
   if (!Object.prototype.hasOwnProperty.call(req.body, 'value')) return res.status(400).json({ error: 'VALUE_REQUIRED' });
@@ -290,7 +521,7 @@ app.post('/api/cms/fields/:id', requireAuth, requireCsrf, (req, res) => {
   res.json({ ok: true, fieldId: field.id, draftValue: store.draftOverrides[field.id] ?? null });
 });
 
-app.post('/api/cms/publish', requireAuth, requireCsrf, (req, res) => {
+app.post('/api/cms/publish', requireAuth, requireEditor, requireCsrf, (req, res) => {
   const changed = Object.keys(store.draftOverrides).length;
   store.publishedOverrides = { ...store.draftOverrides };
   store.revisions.unshift({
@@ -310,7 +541,7 @@ app.get('/api/cms/revisions', requireAuth, (_req, res) => {
   res.json({ revisions: store.revisions.map(({ fields, ...revision }) => ({ ...revision, fieldCount: Object.keys(fields || {}).length })) });
 });
 
-app.post('/api/cms/revisions/:id/restore', requireAuth, requireCsrf, (req, res) => {
+app.post('/api/cms/revisions/:id/restore', requireAuth, requireEditor, requireCsrf, (req, res) => {
   const revision = store.revisions.find((candidate) => candidate.id === req.params.id);
   if (!revision) return res.status(404).json({ error: 'REVISION_NOT_FOUND' });
   store.draftOverrides = { ...(revision.fields || {}) };
@@ -319,7 +550,7 @@ app.post('/api/cms/revisions/:id/restore', requireAuth, requireCsrf, (req, res) 
   res.json({ ok: true, draftFields: Object.keys(store.draftOverrides).length });
 });
 
-app.post('/api/cms/inventory/refresh', requireAuth, requireCsrf, (_req, res) => {
+app.post('/api/cms/inventory/refresh', requireAuth, requireEditor, requireCsrf, (_req, res) => {
   refreshInventory();
   audit('content.inventory.refresh', _req.cmsUser, { pages: inventory.pages.length, fields: inventory.fields.length });
   writeStore();
@@ -330,7 +561,7 @@ app.get('/api/cms/media', requireAuth, (_req, res) => {
   res.json({ media: store.media.filter((item) => !item.deletedAt).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))) });
 });
 
-app.post('/api/cms/media', requireAuth, requireCsrf, upload.single('file'), (req, res) => {
+app.post('/api/cms/media', requireAuth, requireEditor, requireCsrf, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'FILE_REQUIRED' });
   const item = {
     id: crypto.randomUUID(),
@@ -348,7 +579,7 @@ app.post('/api/cms/media', requireAuth, requireCsrf, upload.single('file'), (req
   res.status(201).json({ media: item });
 });
 
-app.delete('/api/cms/media/:id', requireAuth, requireCsrf, (req, res) => {
+app.delete('/api/cms/media/:id', requireAuth, requireEditor, requireCsrf, (req, res) => {
   const item = store.media.find((candidate) => candidate.id === req.params.id && !candidate.deletedAt);
   if (!item) return res.status(404).json({ error: 'MEDIA_NOT_FOUND' });
   item.deletedAt = now();
@@ -359,6 +590,134 @@ app.delete('/api/cms/media/:id', requireAuth, requireCsrf, (req, res) => {
 
 app.get('/api/cms/activity', requireAuth, (_req, res) => {
   res.json({ activity: store.audit.slice(0, 100) });
+});
+
+function cmsRoleForUser(user) {
+  return store.authAdmins.find((admin) => admin.userId === user.id)?.role || null;
+}
+
+function userPayload(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: cmsRoleForUser(user),
+    authRole: user.role || 'user',
+    banned: Boolean(user.banned),
+    banReason: user.banReason || '',
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt
+  };
+}
+
+app.get('/api/cms/users', requireAuth, requireOwner, async (req, res, next) => {
+  try {
+    const result = await auth.api.listUsers({
+      query: { limit: 100, offset: 0, sortBy: 'createdAt', sortDirection: 'desc' },
+      headers: fromNodeHeaders(req.headers)
+    });
+    const users = (result?.users || []).filter((user) => cmsRoleForUser(user)).map(userPayload);
+    res.json({ users, total: users.length });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/cms/users', requireAuth, requireOwner, requireCsrf, async (req, res, next) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const name = String(req.body?.name || '').trim();
+    const password = String(req.body?.password || '');
+    const role = ['owner', 'editor', 'viewer'].includes(req.body?.role) ? req.body.role : 'editor';
+    if (!email || !name || password.length < 12) return res.status(400).json({ error: 'USER_FIELDS_INVALID' });
+    const result = await auth.api.createUser({
+      body: { email, name, password, role: authRoleForCmsRole(role) },
+      headers: fromNodeHeaders(req.headers)
+    });
+    const user = result?.user || result;
+    if (!user?.id) return res.status(500).json({ error: 'USER_CREATE_FAILED' });
+    store.authAdmins.push({ userId: user.id, email: user.email, role, createdAt: now() });
+    syncBetterAuthRole(user.id, role);
+    audit('auth.user.create', req.cmsUser, { userId: user.id, email: user.email, role });
+    writeStore();
+    res.status(201).json({ user: userPayload({ ...user, role: authRoleForCmsRole(role) }) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch('/api/cms/users/:id/role', requireAuth, requireOwner, requireCsrf, async (req, res, next) => {
+  try {
+    const target = store.authAdmins.find((admin) => admin.userId === req.params.id);
+    const role = String(req.body?.role || '');
+    if (!target || !['owner', 'editor', 'viewer'].includes(role)) return res.status(400).json({ error: 'ROLE_INVALID' });
+    if (target.role === 'owner' && role !== 'owner' && store.authAdmins.filter((admin) => admin.role === 'owner').length < 2) {
+      return res.status(409).json({ error: 'LAST_OWNER' });
+    }
+    const result = await auth.api.setRole({
+      body: { userId: req.params.id, role: authRoleForCmsRole(role) },
+      headers: fromNodeHeaders(req.headers)
+    });
+    target.role = role;
+    syncBetterAuthRole(req.params.id, role);
+    audit('auth.user.role', req.cmsUser, { userId: req.params.id, role });
+    writeStore();
+    const user = result?.user || result;
+    res.json({ user: userPayload({ ...user, role: authRoleForCmsRole(role) }) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/cms/users/:id/status', requireAuth, requireOwner, requireCsrf, async (req, res, next) => {
+  try {
+    const target = store.authAdmins.find((admin) => admin.userId === req.params.id);
+    const disabled = Boolean(req.body?.disabled);
+    if (!target) return res.status(404).json({ error: 'USER_NOT_FOUND' });
+    if (target.role === 'owner') return res.status(409).json({ error: 'OWNER_CANNOT_BE_DISABLED' });
+    const result = disabled
+      ? await auth.api.banUser({ body: { userId: req.params.id, banReason: 'Acceso revocado desde el CMS' }, headers: fromNodeHeaders(req.headers) })
+      : await auth.api.unbanUser({ body: { userId: req.params.id }, headers: fromNodeHeaders(req.headers) });
+    audit(disabled ? 'auth.user.disable' : 'auth.user.enable', req.cmsUser, { userId: req.params.id });
+    writeStore();
+    const user = result?.user || result;
+    res.json({ user: userPayload({ ...user, role: authRoleForCmsRole(target.role) }) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+function absoluteSiteUrl(route = '/') {
+  const base = String(store.settings.canonicalBaseUrl || '').replace(/\/$/, '');
+  return `${base}${route === '/' ? '/' : route}`;
+}
+
+app.get('/robots.txt', (_req, res) => {
+  const body = store.settings.indexingEnabled
+    ? `User-agent: *\nAllow: /\nSitemap: ${absoluteSiteUrl('/sitemap.xml')}\n`
+    : 'User-agent: *\nDisallow: /\n';
+  res.type('text/plain').send(body);
+});
+
+app.get('/sitemap.xml', (_req, res) => {
+  const urls = store.settings.indexingEnabled ? inventory.pages.map((page) => `<url><loc>${absoluteSiteUrl(page.page)}</loc></url>`).join('') : '';
+  res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls}</urlset>`);
+});
+
+app.get('/llms.txt', (_req, res) => {
+  const lines = [
+    `# ${store.settings.siteName}`,
+    '',
+    store.settings.siteDescription,
+    '',
+    '## Páginas',
+    ...inventory.pages.map((page) => `- [${page.title}](${absoluteSiteUrl(page.page)})`),
+    '',
+    '## Contacto',
+    `- ${store.settings.geo?.email || ''}`,
+    `- ${store.settings.geo?.street || ''}, ${store.settings.geo?.locality || ''}, ${store.settings.geo?.region || ''}`
+  ];
+  res.type('text/plain').send(`${lines.join('\n')}\n`);
 });
 
 // The CMS is intentionally in front of the static export: HTML receives published overrides

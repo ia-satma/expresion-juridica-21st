@@ -7,6 +7,8 @@ const state = {
   fields: [],
   media: [],
   mediaTarget: null,
+  settings: null,
+  users: [],
   setup: false
 };
 
@@ -45,7 +47,13 @@ async function api(url, options = {}) {
   }
   if (response.status === 204) return null;
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || `HTTP_${response.status}`);
+  if (!response.ok) {
+    const error = new Error(payload.error || `HTTP_${response.status}`);
+    error.code = payload.error;
+    error.status = response.status;
+    error.ownerEmail = payload.ownerEmail;
+    throw error;
+  }
   return payload;
 }
 
@@ -73,6 +81,11 @@ function showAuth(setup) {
     : 'Administra textos, enlaces, imágenes, video y metadatos del sitio público.';
   $('#auth-submit').textContent = setup ? 'Crear cuenta y entrar' : 'Entrar';
   $('#auth-password').autocomplete = setup ? 'new-password' : 'current-password';
+  $('#auth-email').readOnly = setup;
+  if (setup) {
+    $('#auth-email').value = 'ia@satma.mx';
+    $('#auth-email').placeholder = 'ia@satma.mx';
+  }
   $('#auth-error').hidden = true;
 }
 
@@ -81,13 +94,17 @@ function showApp() {
   $('#auth-view').hidden = true;
   $('#sidebar').hidden = false;
   $('#main-view').hidden = false;
+  $$('[data-owner-only]').forEach((element) => { element.hidden = state.user?.role !== 'owner'; });
+  const canEdit = ['owner', 'editor'].includes(state.user?.role);
+  $('#publish-button').hidden = !canEdit;
+  $('#media-upload')?.closest('label')?.toggleAttribute('hidden', !canEdit);
   $('#view-title').textContent = 'Resumen';
   navigate('dashboard');
 }
 
 function navigate(view) {
   state.view = view;
-  const titles = { dashboard: 'Resumen', pages: 'Páginas', media: 'Biblioteca', revisions: 'Versiones', activity: 'Actividad' };
+  const titles = { dashboard: 'Resumen', pages: 'Páginas', media: 'Biblioteca', revisions: 'Versiones', activity: 'Actividad', settings: 'Ajustes', users: 'Usuarios' };
   $('#view-title').textContent = titles[view] || 'CMS';
   $$('.nav-item[data-view]').forEach((button) => button.classList.toggle('is-active', button.dataset.view === view));
   $$('.content-view').forEach((section) => { section.hidden = section.id !== `${view}-view`; });
@@ -96,6 +113,8 @@ function navigate(view) {
   if (view === 'media') loadMedia();
   if (view === 'revisions') loadRevisions();
   if (view === 'activity') loadActivity();
+  if (view === 'settings') loadSettings();
+  if (view === 'users') loadUsers();
 }
 
 function renderSummary(summary) {
@@ -149,8 +168,9 @@ function fieldInput(field) {
   const value = field.draftValue ?? field.publishedValue ?? field.original ?? '';
   const isLong = field.attribute === 'html' || value.length > 140;
   const className = field.attribute === 'html' ? 'html-field' : '';
-  if (isLong) return `<textarea class="${className}" data-field-id="${field.id}" aria-label="${escapeHtml(field.label)}">${escapeHtml(value)}</textarea>`;
-  return `<input class="${className}" data-field-id="${field.id}" value="${escapeHtml(value)}" aria-label="${escapeHtml(field.label)}" />`;
+  const readonly = state.user?.role === 'viewer' ? ' readonly' : '';
+  if (isLong) return `<textarea class="${className}" data-field-id="${field.id}" aria-label="${escapeHtml(field.label)}"${readonly}>${escapeHtml(value)}</textarea>`;
+  return `<input class="${className}" data-field-id="${field.id}" value="${escapeHtml(value)}" aria-label="${escapeHtml(field.label)}"${readonly} />`;
 }
 
 function kindLabel(field) {
@@ -177,10 +197,11 @@ function renderEditor() {
 function renderFieldList(fields) {
   const list = $('#field-list');
   if (!fields.length) { list.innerHTML = '<div class="empty-state"><strong>Sin resultados</strong><span>Prueba otra búsqueda o tipo de campo.</span></div>'; return; }
+  const canEdit = ['owner', 'editor'].includes(state.user?.role);
   list.innerHTML = fields.map((field) => {
     const hasDraft = field.draftValue != null;
     const current = field.draftValue ?? field.publishedValue ?? field.original;
-    return `<article class="field-card" data-field-card="${field.id}" data-field-search="${escapeHtml(`${field.label} ${field.section} ${field.attribute} ${field.original}`.toLowerCase())}" data-field-kind="${escapeHtml(field.kind)}"><div class="field-meta"><div><div class="field-label">${escapeHtml(field.label)}</div><span class="field-path">${escapeHtml(field.selector)} · ${escapeHtml(field.attribute)}</span></div><span class="field-kind">${escapeHtml(kindLabel(field))}</span></div>${field.kind === 'image' || field.kind === 'video' || field.kind === 'audio' ? `<div class="field-preview-note">Puedes pegar una ruta existente o usar la biblioteca multimedia.</div>` : ''}${fieldInput({ ...field, draftValue: current, publishedValue: null })}<div class="field-foot"><span class="field-source">Original: ${escapeHtml(field.original).slice(0, 120)}</span><span class="field-status ${hasDraft ? 'is-draft' : ''}">${hasDraft ? 'Borrador pendiente' : field.publishedValue != null ? 'Publicado desde CMS' : 'Valor original'}</span><div class="field-actions"><button class="mini-button reset-field" data-field-id="${field.id}" type="button">Restaurar original</button><button class="mini-button save-field" data-field-id="${field.id}" type="button">Guardar borrador</button></div></div></article>`;
+    return `<article class="field-card" data-field-card="${field.id}" data-field-search="${escapeHtml(`${field.label} ${field.section} ${field.attribute} ${field.original}`.toLowerCase())}" data-field-kind="${escapeHtml(field.kind)}"><div class="field-meta"><div><div class="field-label">${escapeHtml(field.label)}</div><span class="field-path">${escapeHtml(field.selector)} · ${escapeHtml(field.attribute)}</span></div><span class="field-kind">${escapeHtml(kindLabel(field))}</span></div>${field.kind === 'image' || field.kind === 'video' || field.kind === 'audio' ? `<div class="field-preview-note">Puedes pegar una ruta existente o usar la biblioteca multimedia.</div>` : ''}${fieldInput({ ...field, draftValue: current, publishedValue: null })}<div class="field-foot"><span class="field-source">Original: ${escapeHtml(field.original).slice(0, 120)}</span><span class="field-status ${hasDraft ? 'is-draft' : ''}">${hasDraft ? 'Borrador pendiente' : field.publishedValue != null ? 'Publicado desde CMS' : 'Valor original'}</span><div class="field-actions">${canEdit ? `<button class="mini-button reset-field" data-field-id="${field.id}" type="button">Restaurar original</button><button class="mini-button save-field" data-field-id="${field.id}" type="button">Guardar borrador</button>` : '<span class="field-status">Sólo lectura</span>'}</div></div></article>`;
   }).join('');
   $$('.save-field', list).forEach((button) => button.addEventListener('click', () => saveField(button.dataset.fieldId)));
   $$('.reset-field', list).forEach((button) => button.addEventListener('click', () => resetField(button.dataset.fieldId)));
@@ -250,7 +271,8 @@ async function publish() {
 function renderMedia() {
   const grid = $('#media-grid');
   if (!state.media.length) { grid.innerHTML = '<div class="empty-state"><strong>Biblioteca vacía</strong><span>Sube una imagen, video, audio o PDF para empezar.</span></div>'; return; }
-  grid.innerHTML = state.media.map((item) => `<article class="media-card"><div class="media-preview">${item.mime.startsWith('image/') ? `<img src="${escapeHtml(item.url)}" alt="" loading="lazy" />` : item.mime.startsWith('video/') ? `<video src="${escapeHtml(item.url)}" controls preload="metadata"></video>` : `<span>${escapeHtml(item.mime.split('/')[0].toUpperCase())}</span>`}</div><div class="media-info"><strong title="${escapeHtml(item.originalName)}">${escapeHtml(item.originalName)}</strong><small>${escapeHtml(item.mime)} · ${Math.round(item.size / 1024)} KB</small><div class="media-actions"><button class="mini-button use-media" data-media-id="${item.id}" type="button">Usar en campo</button><button class="mini-button copy-media" data-media-url="${item.url}" type="button">Copiar ruta</button></div></div></article>`).join('');
+  const canEdit = ['owner', 'editor'].includes(state.user?.role);
+  grid.innerHTML = state.media.map((item) => `<article class="media-card"><div class="media-preview">${item.mime.startsWith('image/') ? `<img src="${escapeHtml(item.url)}" alt="" loading="lazy" />` : item.mime.startsWith('video/') ? `<video src="${escapeHtml(item.url)}" controls preload="metadata"></video>` : `<span>${escapeHtml(item.mime.split('/')[0].toUpperCase())}</span>`}</div><div class="media-info"><strong title="${escapeHtml(item.originalName)}">${escapeHtml(item.originalName)}</strong><small>${escapeHtml(item.mime)} · ${Math.round(item.size / 1024)} KB</small><div class="media-actions">${canEdit ? `<button class="mini-button use-media" data-media-id="${item.id}" type="button">Usar en campo</button>` : ''}<button class="mini-button copy-media" data-media-url="${item.url}" type="button">Copiar ruta</button></div></div></article>`).join('');
   $$('.use-media').forEach((button) => button.addEventListener('click', () => useMedia(button.dataset.mediaId)));
   $$('.copy-media').forEach((button) => button.addEventListener('click', async () => { await navigator.clipboard?.writeText(button.dataset.mediaUrl); notify('Ruta copiada.'); }));
 }
@@ -264,7 +286,9 @@ async function useMedia(id) {
   if (!item || !state.mediaTarget) { notify('Primero abre un campo de imagen o video.', 'error'); return; }
   const target = state.mediaTarget;
   navigate('pages');
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  // `navigate` starts the async page load; await a second explicit load so the
+  // selected field exists before the media URL is written into it.
+  await loadPages();
   const input = inputForField(target);
   if (!input) { notify('El campo ya no está disponible.', 'error'); return; }
   input.value = item.url;
@@ -282,6 +306,90 @@ async function restoreRevision(id) {
 
 async function loadActivity() {
   try { const response = await api('/api/cms/activity'); $('#activity-list').innerHTML = response.activity.map((item) => `<div class="stack-row"><div><strong>${escapeHtml(item.action)}</strong><small>${escapeHtml(item.actor)} · ${escapeHtml(formatDate(item.at))}</small></div><span class="field-kind">${escapeHtml(item.detail?.page || 'CMS')}</span></div>`).join('') || '<div class="empty-state"><span>Aún no hay actividad.</span></div>'; } catch { notify('No se pudo cargar la actividad.', 'error'); }
+}
+
+function fillSettings(settings) {
+  state.settings = settings;
+  const set = (id, value) => { const element = $(`#${id}`); if (element) element.value = value ?? ''; };
+  const check = (id, value) => { const element = $(`#${id}`); if (element) element.checked = Boolean(value); };
+  set('setting-site-name', settings.siteName);
+  set('setting-site-description', settings.siteDescription);
+  set('setting-canonical', settings.canonicalBaseUrl);
+  check('setting-indexing', settings.indexingEnabled);
+  set('setting-search-console', settings.searchConsoleVerification);
+  check('setting-analytics-enabled', settings.analytics?.enabled);
+  set('setting-measurement', settings.analytics?.measurementId);
+  set('setting-cookie-title', settings.cookie?.title);
+  set('setting-cookie-text', settings.cookie?.text);
+  set('setting-cookie-version', settings.cookie?.version);
+  set('setting-cookie-policy', settings.cookie?.policyUrl);
+  set('setting-cookie-accept', settings.cookie?.acceptLabel);
+  set('setting-cookie-reject', settings.cookie?.rejectLabel);
+  set('setting-geo-name', settings.geo?.businessName);
+  set('setting-geo-email', settings.geo?.email);
+  set('setting-geo-phone', settings.geo?.phone);
+  set('setting-geo-street', settings.geo?.street);
+  set('setting-geo-locality', settings.geo?.locality);
+  set('setting-geo-region', settings.geo?.region);
+  set('setting-geo-country', settings.geo?.country);
+  set('setting-geo-lat', settings.geo?.latitude);
+  set('setting-geo-lng', settings.geo?.longitude);
+  set('setting-navigation-hidden', Object.entries(settings.navigation?.visibility || {}).filter(([, visible]) => visible === false).map(([key]) => key).join('\n'));
+}
+
+function readSettingsForm() {
+  const value = (id) => $(`#${id}`)?.value || '';
+  const checked = (id) => Boolean($(`#${id}`)?.checked);
+  const visibility = {};
+  value('setting-navigation-hidden').split('\n').map((line) => line.trim()).filter(Boolean).forEach((key) => { visibility[key] = false; });
+  return {
+    siteName: value('setting-site-name'),
+    siteDescription: value('setting-site-description'),
+    canonicalBaseUrl: value('setting-canonical'),
+    indexingEnabled: checked('setting-indexing'),
+    searchConsoleVerification: value('setting-search-console'),
+    analytics: { enabled: checked('setting-analytics-enabled'), measurementId: value('setting-measurement') },
+    cookie: {
+      title: value('setting-cookie-title'), text: value('setting-cookie-text'), version: value('setting-cookie-version'),
+      policyUrl: value('setting-cookie-policy'), acceptLabel: value('setting-cookie-accept'), rejectLabel: value('setting-cookie-reject')
+    },
+    geo: {
+      businessName: value('setting-geo-name'), email: value('setting-geo-email'), phone: value('setting-geo-phone'), street: value('setting-geo-street'),
+      locality: value('setting-geo-locality'), region: value('setting-geo-region'), country: value('setting-geo-country'), latitude: value('setting-geo-lat'), longitude: value('setting-geo-lng')
+    },
+    navigation: { visibility }
+  };
+}
+
+async function loadSettings() {
+  if (state.user?.role !== 'owner') return;
+  try { const response = await api('/api/cms/settings'); fillSettings(response.settings); } catch { notify('No se pudieron cargar los ajustes.', 'error'); }
+}
+
+async function saveSettings() {
+  if (state.user?.role !== 'owner') return notify('Sólo el propietario puede cambiar los ajustes.', 'error');
+  try { const response = await api('/api/cms/settings', { method: 'PUT', body: readSettingsForm() }); fillSettings(response.settings); notify('Ajustes guardados y conectados al sitio.'); } catch (error) { notify(`No se guardaron los ajustes: ${error.message}`, 'error'); }
+}
+
+function renderUsers() {
+  const list = $('#users-list');
+  if (!state.users.length) { list.innerHTML = '<div class="empty-state"><span>No hay usuarios registrados.</span></div>'; return; }
+  list.innerHTML = state.users.map((user) => `<div class="user-row"><div class="user-identity"><strong>${escapeHtml(user.name || user.email)}</strong><small>${escapeHtml(user.email)} · alta ${escapeHtml(formatDate(user.createdAt))}</small></div><div class="user-controls"><select class="user-role" data-user-id="${escapeHtml(user.id)}" ${user.role === 'owner' && state.users.filter((candidate) => candidate.role === 'owner').length === 1 ? 'data-last-owner="true"' : ''}><option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Propietario</option><option value="editor" ${user.role === 'editor' ? 'selected' : ''}>Editor</option><option value="viewer" ${user.role === 'viewer' ? 'selected' : ''}>Visualizador</option></select><button type="button" class="mini-button user-status" data-user-id="${escapeHtml(user.id)}" data-disabled="${user.banned ? 'false' : 'true'}" ${user.role === 'owner' ? 'disabled' : ''}>${user.banned ? 'Activar' : 'Revocar'}</button></div></div>`).join('');
+  $$('.user-role', list).forEach((select) => select.addEventListener('change', () => updateUserRole(select.dataset.userId, select.value, select)));
+  $$('.user-status', list).forEach((button) => button.addEventListener('click', () => updateUserStatus(button.dataset.userId, button.dataset.disabled === 'true')));
+}
+
+async function loadUsers() {
+  if (state.user?.role !== 'owner') return;
+  try { const response = await api('/api/cms/users'); state.users = response.users; renderUsers(); } catch { notify('No se pudieron cargar los usuarios.', 'error'); }
+}
+
+async function updateUserRole(id, role, select) {
+  try { await api(`/api/cms/users/${encodeURIComponent(id)}/role`, { method: 'PATCH', body: { role } }); notify('Rol actualizado.'); await loadUsers(); if (id === state.user.id) { state.user.role = role; showApp(); } } catch (error) { select.value = state.users.find((user) => user.id === id)?.role || 'viewer'; notify(`No se actualizó el rol: ${error.message}`, 'error'); }
+}
+
+async function updateUserStatus(id, disabled) {
+  try { await api(`/api/cms/users/${encodeURIComponent(id)}/status`, { method: 'POST', body: { disabled } }); notify(disabled ? 'Acceso revocado.' : 'Acceso activado.'); await loadUsers(); } catch (error) { notify(`No se actualizó el acceso: ${error.message}`, 'error'); }
 }
 
 async function uploadMedia(file) {
@@ -302,12 +410,34 @@ async function boot() {
   });
   $('#logout-button').addEventListener('click', async () => { try { await api('/api/auth/sign-out', { method: 'POST', body: {} }); } finally { state.user = null; state.csrf = null; showAuth(false); } });
   $('#publish-button').addEventListener('click', publish);
+  $('#save-settings').addEventListener('click', saveSettings);
+  $('#settings-form').addEventListener('submit', (event) => { event.preventDefault(); saveSettings(); });
+  $('#refresh-users').addEventListener('click', loadUsers);
+  $('#user-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      await api('/api/cms/users', { method: 'POST', body: { name: $('#user-name').value, email: $('#user-email').value, password: $('#user-password').value, role: $('#user-role').value } });
+      event.target.reset();
+      notify('Usuario creado.');
+      await loadUsers();
+    } catch (error) { notify(`No se creó el usuario: ${error.message}`, 'error'); }
+  });
   $('#refresh-inventory').addEventListener('click', async () => { try { await api('/api/cms/inventory/refresh', { method: 'POST', body: {} }); notify('Inventario actualizado.'); state.selectedPage = null; await loadPages(); } catch (error) { notify(`No se actualizó el inventario: ${error.message}`, 'error'); } });
   $('#media-upload').addEventListener('change', (event) => { const file = event.target.files?.[0]; if (file) uploadMedia(file); event.target.value = ''; });
   document.addEventListener('click', (event) => { const target = event.target.closest('[data-view]'); if (target) navigate(target.dataset.view); });
-  const me = await api('/api/cms/auth-state');
-  if (!me.authenticated) { showAuth(me.setupRequired); return; }
-  state.user = me.user; state.csrf = me.csrf; showApp();
+  try {
+    const me = await api('/api/cms/auth-state');
+    if (!me.authenticated) { showAuth(me.setupRequired); return; }
+    state.user = me.user; state.csrf = me.csrf; showApp();
+  } catch (error) {
+    if (error.code === 'OWNER_EMAIL_REQUIRED') {
+      showAuth(true);
+      $('#auth-error').textContent = `La cuenta propietaria debe usar ${error.ownerEmail || 'ia@satma.mx'}.`;
+      $('#auth-error').hidden = false;
+      return;
+    }
+    throw error;
+  }
 }
 
 boot().catch(() => showAuth(false));

@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { betterAuth } from 'better-auth';
 import { getMigrations } from 'better-auth/db/migration';
+import { admin as adminPlugin } from 'better-auth/plugins';
 
 const ROOT = process.cwd();
 const DATA_DIR = path.join(ROOT, 'data');
@@ -46,6 +47,7 @@ export const auth = betterAuth({
     expiresIn: 60 * 60 * 8,
     updateAge: 60 * 60
   },
+  plugins: [adminPlugin()],
   advanced: {
     database: {
       validateSchema: false
