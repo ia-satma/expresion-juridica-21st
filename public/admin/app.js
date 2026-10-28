@@ -103,6 +103,7 @@ function showAuth(setup) {
   }
   $('#google-login').hidden = !state.googleEnabled;
   $('#auth-divider').hidden = !state.googleEnabled;
+  $('#google-config-note').hidden = state.googleEnabled;
   $('#auth-error').hidden = true;
 }
 
