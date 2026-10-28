@@ -93,12 +93,10 @@ function showAuth(setup) {
   $('#auth-view').hidden = false;
   $('#sidebar').hidden = true;
   $('#main-view').hidden = true;
-  $('#auth-title').textContent = setup ? 'Crear cuenta propietaria' : 'Acceso al CMS';
-  $('#auth-copy').textContent = setup
-    ? 'Es el primer arranque. Crea la cuenta que tendrá control editorial del sitio.'
-    : 'Administra textos, enlaces, imágenes, video y metadatos del sitio público.';
-  $('#auth-submit').textContent = setup ? 'Crear cuenta y entrar' : 'Entrar';
-  $('#auth-password').autocomplete = setup ? 'new-password' : 'current-password';
+  $('#auth-title').textContent = 'Inicia sesión';
+  $('#auth-copy').textContent = 'Accede al CMS con una cuenta autorizada para administrar el sitio público.';
+  $('#auth-submit').textContent = 'Iniciar sesión';
+  $('#auth-password').autocomplete = 'current-password';
   // Keep the login screen neutral: never expose or persist the administrator email.
   $('#auth-email').readOnly = false;
   $('#auth-email').value = '';

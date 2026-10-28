@@ -149,6 +149,20 @@ function cmsAdminRecordForId(id) {
   return store.authAdmins.find((admin) => admin.userId === id || admin.id === id) || null;
 }
 
+function hasAuthUsers() {
+  try {
+    return Boolean(authDatabase.prepare('SELECT id FROM "user" LIMIT 1').get());
+  } catch (error) {
+    // The migration runs before the first request. Treat an unavailable table
+    // as empty so the guarded first-run path can still report a useful state.
+    return false;
+  }
+}
+
+function setupRequired() {
+  return store.authAdmins.length === 0 && !hasAuthUsers();
+}
+
 function hasGoogleAccount(userId) {
   if (!googleAuthEnabled) return false;
   try {
@@ -432,7 +446,7 @@ app.disable('x-powered-by');
 // Better Auth must receive the raw request stream before Express body parsers.
 // Express 5 uses the `*splat` catch-all syntax documented by Better Auth.
 app.all('/api/auth/sign-up/email', (req, res, next) => {
-  if (store.authAdmins.length) return res.status(403).json({ error: 'SIGNUP_DISABLED' });
+  if (!setupRequired()) return res.status(403).json({ error: 'SIGNUP_DISABLED' });
   return toNodeHandler(auth)(req, res, next);
 });
 app.all('/api/auth/*splat', toNodeHandler(auth));
@@ -475,7 +489,7 @@ app.get('/api/cms/auth-options', (_req, res) => {
 
 app.get('/api/cms/auth-state', async (req, res) => {
   const session = await authSessionFor(req);
-  if (!session?.user) return res.json({ authenticated: false, setupRequired: store.authAdmins.length === 0 });
+  if (!session?.user) return res.json({ authenticated: false, setupRequired: setupRequired() });
   let admin = cmsAdminFor(session);
   if (!admin && store.authAdmins.length === 0) {
     if (String(session.user.email || '').toLowerCase() !== OWNER_EMAIL) return res.status(403).json({ error: 'OWNER_EMAIL_REQUIRED' });
@@ -906,7 +920,7 @@ async function start() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[cms] Expresión Jurídica CMS en http://localhost:${PORT}`);
     console.log(`[cms] ${inventory.pages.length} páginas · ${inventory.fields.length} campos editables`);
-    if (!store.authAdmins.length) console.log('[cms] Primer arranque: abre /admin y crea la cuenta propietaria.');
+    if (setupRequired()) console.log('[cms] Primer arranque: el acceso inicial está protegido para la cuenta propietaria.');
   });
 }
 
