@@ -75,7 +75,7 @@ async function authRequest(url, body) {
     body: JSON.stringify(body)
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || payload.error || payload.code || `HTTP_${response.status}`);
+  if (!response.ok) { const error = new Error(payload.message || payload.error || payload.code || ('HTTP_' + response.status)); error.code = payload.error || payload.code || ''; error.status = response.status; error.retryAfterSeconds = payload.retryAfterSeconds || 0; throw error; }
   return payload;
 }
 
@@ -665,6 +665,17 @@ async function importSiteMedia() {
   } finally {
     if (button) { button.disabled = false; button.textContent = 'Cargar medios del sitio'; }
   }
+}
+
+function authErrorMessage(error) {
+  if (error?.code === 'LOGIN_TEMPORARILY_BLOCKED') {
+    const wait = Number(error.retryAfterSeconds || 0);
+    return wait > 60
+      ? 'Por seguridad, el acceso está pausado. Inténtalo de nuevo en unos minutos.'
+      : 'Por seguridad, espera un momento antes de volver a intentarlo.';
+  }
+  if (error?.message === 'INVALID_EMAIL_OR_PASSWORD' || error?.message === 'CREDENTIALS_INVALID') return 'Email o contraseña incorrectos.';
+  return 'No se pudo completar el acceso: ' + (error?.message || 'inténtalo de nuevo.');
 }
 
 async function boot() {
