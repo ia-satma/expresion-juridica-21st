@@ -6,13 +6,12 @@ import multer from 'multer';
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
 import { buildInventory, fileForRoute, inventoryHtml, routeFromFile, SITE_DIR } from './inventory.mjs';
 import { auth, authDatabase, migrateAuthDatabase } from './auth.mjs';
+import { DATA_DIR, DATA_SCOPE, MEDIA_DIR, STORE_FILE } from './data-paths.mjs';
+import { appStorageEnabled, appStorageScope, deleteFile as deleteStorageFile, downloadFile as downloadStorageFile, removeLocalFile, uploadFile as uploadStorageFile } from './app-storage.mjs';
 
 const ROOT = process.cwd();
 const PORT = Number(process.env.PORT || 3000);
-const DATA_DIR = path.join(ROOT, 'data');
-const MEDIA_DIR = path.join(ROOT, 'storage', 'media');
 const ADMIN_DIR = path.join(ROOT, 'public', 'admin');
-const STORE_FILE = path.join(DATA_DIR, 'cms.json');
 const OWNER_EMAIL = String(process.env.CMS_OWNER_EMAIL || 'ia@satma.mx').trim().toLowerCase();
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -32,9 +31,10 @@ const defaultSettings = () => ({
   cookie: {
     version: '1.0',
     title: 'Privacidad y cookies',
-    text: 'Usamos cookies necesarias para que el sitio funcione. Con tu permiso, activamos analítica para comprender el uso del sitio.',
+    text: 'Usamos almacenamiento técnico para recordar que ya viste este aviso. La analítica sólo se activa si la aceptas.',
     acceptLabel: 'Aceptar analítica',
     rejectLabel: 'Rechazar analítica',
+    privacyUrl: '/aviso-de-privacidad/',
     policyUrl: '/politica-de-cookies/'
   },
   geo: {
@@ -60,6 +60,7 @@ const defaultStore = () => ({
   draftOverrides: {},
   publishedOverrides: {},
   media: [],
+  signatures: [],
   submissions: [],
   revisions: [],
   audit: [],
@@ -91,6 +92,7 @@ function readStore() {
           .filter((admin) => admin?.provider !== 'google' && !admin?.pending)
           .map((admin) => ({ ...admin, provider: 'password', mustChangePassword: Boolean(admin.mustChangePassword) }))
         : [],
+      signatures: Array.isArray(parsed.signatures) ? parsed.signatures : [],
       settings: mergeSettings(parsed.settings)
     };
   } catch (error) {
@@ -131,6 +133,19 @@ function cmsAdminFor(session) {
 
 function emailKey(email) {
   return String(email || '').trim().toLowerCase();
+}
+
+function pageCategory(page) {
+  const route = String(page || '/');
+  if (route === '/') return 'Inicio';
+  if (route.startsWith('/areas/')) return 'Áreas de práctica';
+  if (route === '/areas/') return 'Áreas de práctica';
+  if (route.startsWith('/analisis/')) return 'Análisis';
+  if (route === '/analisis/') return 'Análisis';
+  if (route === '/como-trabajamos/') return 'Cómo trabajamos';
+  if (route === '/contacto/') return 'Contacto';
+  if (route === '/aviso-de-privacidad/' || route === '/politica-de-cookies/') return 'Privacidad y legal';
+  return 'Páginas institucionales';
 }
 
 function authRoleForCmsRole(role) {
@@ -214,6 +229,7 @@ function normalizeSettings(input = {}) {
       text: text(next.cookie?.text, 500),
       acceptLabel: text(next.cookie?.acceptLabel, 80),
       rejectLabel: text(next.cookie?.rejectLabel, 80),
+      privacyUrl: text(next.cookie?.privacyUrl, 500) || '/aviso-de-privacidad/',
       policyUrl: text(next.cookie?.policyUrl, 500) || '/politica-de-cookies/'
     },
     geo: {
@@ -438,6 +454,25 @@ function cleanMediaFolder(value) {
   return folder || 'General';
 }
 
+const siteMediaExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif', '.gif', '.svg', '.mp4', '.webm', '.mp3', '.wav', '.pdf']);
+function siteMediaFiles(directory, prefix = '') {
+  const files = [];
+  if (!fs.existsSync(directory)) return files;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    if (entry.name.startsWith('._') || entry.name === '.DS_Store') continue;
+    const absolute = path.join(directory, entry.name);
+    const relative = path.join(prefix, entry.name).split(path.sep).join('/');
+    if (entry.isDirectory()) files.push(...siteMediaFiles(absolute, relative));
+    else if (siteMediaExtensions.has(path.extname(entry.name).toLowerCase())) files.push({ absolute, relative });
+  }
+  return files;
+}
+
+function mediaMime(file) {
+  const ext = path.extname(file).toLowerCase();
+  return ({ '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.avif': 'image/avif', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.pdf': 'application/pdf' })[ext] || 'application/octet-stream';
+}
+
 const app = express();
 app.disable('x-powered-by');
 
@@ -479,7 +514,7 @@ app.post('/api/public/contact', (req, res) => {
   res.status(201).json({ ok: true, id: item.id, message: 'Solicitud recibida. Nos pondremos en contacto pronto.' });
 });
 
-app.get('/healthz', (_req, res) => res.json({ ok: true, service: 'expresion-juridica-cms', inventory: inventory.pages.length }));
+app.get('/healthz', (_req, res) => res.json({ ok: true, service: 'expresion-juridica-cms', inventory: inventory.pages.length, dataScope: DATA_SCOPE, appStorage: appStorageEnabled }));
 
 app.get('/api/cms/auth-state', async (req, res) => {
   const session = await authSessionFor(req);
@@ -562,7 +597,7 @@ app.get('/api/cms/pages', requireAuth, (_req, res) => {
     const pageFields = inventory.fields.filter((field) => field.page === page.page);
     const draft = pageFields.filter((field) => Object.prototype.hasOwnProperty.call(store.draftOverrides, field.id)).length;
     const published = pageFields.filter((field) => Object.prototype.hasOwnProperty.call(store.publishedOverrides, field.id)).length;
-    return { ...page, draftFields: draft, publishedFields: published };
+    return { ...page, category: pageCategory(page.page), draftFields: draft, publishedFields: published };
   });
   res.json({ pages });
 });
@@ -659,15 +694,32 @@ app.get('/api/cms/media', requireAuth, (req, res) => {
   const search = String(req.query.search || '').trim().toLowerCase();
   const media = store.media.filter((item) => !item.deletedAt && (!folder || item.folder === folder) && (!search || `${item.originalName} ${item.caption || ''} ${item.alt || ''}`.toLowerCase().includes(search))).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   const folders = Object.entries(store.media.filter((item) => !item.deletedAt).reduce((map, item) => { const key = item.folder || 'General'; map[key] = (map[key] || 0) + 1; return map; }, {})).sort(([a], [b]) => a.localeCompare(b, 'es'));
-  res.json({ media, folders: folders.map(([name, count]) => ({ name, count })) });
+  res.json({ media, folders: folders.map(([name, count]) => ({ name, count })), storage: { provider: appStorageEnabled ? 'replit-app-storage' : 'local', scope: appStorageEnabled ? appStorageScope : DATA_SCOPE } });
 });
 
-app.post('/api/cms/media', requireAuth, requireEditor, requireCsrf, upload.single('file'), (req, res) => {
+app.post('/api/cms/media', requireAuth, requireEditor, requireCsrf, upload.single('file'), async (req, res, next) => {
   if (!req.file) return res.status(400).json({ error: 'FILE_REQUIRED' });
+  let storage = 'local';
+  if (appStorageEnabled) {
+    try {
+      const uploaded = await uploadStorageFile(req.file.filename, req.file.path);
+      if (!uploaded.ok) {
+        removeLocalFile(req.file.path);
+        return res.status(503).json({ error: uploaded.error });
+      }
+      storage = 'replit-app-storage';
+      removeLocalFile(req.file.path);
+    } catch (error) {
+      removeLocalFile(req.file.path);
+      return next(error);
+    }
+  }
   const item = {
     id: crypto.randomUUID(),
     url: `/cms-media/${encodeURIComponent(req.file.filename)}`,
     filename: req.file.filename,
+    storage,
+    storageScope: appStorageEnabled ? appStorageScope : DATA_SCOPE,
     originalName: req.file.originalname,
     mime: req.file.mimetype,
     size: req.file.size,
@@ -681,6 +733,50 @@ app.post('/api/cms/media', requireAuth, requireEditor, requireCsrf, upload.singl
   audit('media.upload', req.cmsUser, { mediaId: item.id, name: item.originalName, size: item.size });
   writeStore();
   res.status(201).json({ media: item });
+});
+
+app.post('/api/cms/media/import-site', requireAuth, requireEditor, requireCsrf, async (req, res, next) => {
+  if (!appStorageEnabled) return res.status(503).json({ error: 'APP_STORAGE_NOT_CONFIGURED' });
+  try {
+    const imported = [];
+    const sourceFiles = [
+      ...siteMediaFiles(SITE_DIR),
+      ...siteMediaFiles(path.join(ROOT, 'firma-cms', 'assets'), 'firma-cms/assets')
+    ];
+    for (const file of sourceFiles) {
+      const sourcePath = file.relative;
+      if (store.media.some((item) => !item.deletedAt && item.sourcePath === sourcePath)) continue;
+      const filename = `site-${sourcePath.replace(/[^a-zA-Z0-9._-]+/g, '-')}`;
+      const uploaded = await uploadStorageFile(filename, file.absolute);
+      if (!uploaded.ok) return res.status(503).json({ error: uploaded.error, imported: imported.length });
+      const folder = sourcePath.startsWith('img/') ? 'Imágenes del sitio' : sourcePath.startsWith('video/') ? 'Videos del sitio' : sourcePath.startsWith('firma-cms/') ? 'Firmas de correo' : 'Marca';
+      const item = {
+        id: crypto.randomUUID(),
+        url: `/cms-media/${encodeURIComponent(filename)}`,
+        filename,
+        storage: 'replit-app-storage',
+        storageScope: appStorageScope,
+        originalName: path.basename(sourcePath),
+        sourcePath,
+        mime: mediaMime(sourcePath),
+        size: fs.statSync(file.absolute).size,
+        folder,
+        alt: '',
+        caption: `Importado del sitio · ${sourcePath}`,
+        createdAt: now(),
+        uploadedBy: req.cmsUser.email
+      };
+      store.media.push(item);
+      imported.push(item);
+    }
+    if (imported.length) {
+      audit('media.site-import', req.cmsUser, { count: imported.length, scope: appStorageScope });
+      writeStore();
+    }
+    res.json({ ok: true, imported: imported.length, total: store.media.filter((item) => !item.deletedAt).length, storage: appStorageScope });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.patch('/api/cms/media/:id', requireAuth, requireEditor, requireCsrf, (req, res) => {
@@ -697,14 +793,74 @@ app.patch('/api/cms/media/:id', requireAuth, requireEditor, requireCsrf, (req, r
 app.delete('/api/cms/media/:id', requireAuth, requireEditor, requireCsrf, (req, res) => {
   const item = store.media.find((candidate) => candidate.id === req.params.id && !candidate.deletedAt);
   if (!item) return res.status(404).json({ error: 'MEDIA_NOT_FOUND' });
-  item.deletedAt = now();
-  audit('media.archive', req.cmsUser, { mediaId: item.id });
-  writeStore();
-  res.status(204).end();
+  const archive = async () => {
+    if (item.storage === 'replit-app-storage') {
+      const result = await deleteStorageFile(item.filename);
+      if (!result.ok) return res.status(503).json({ error: result.error });
+    } else if (item.filename) {
+      removeLocalFile(path.join(MEDIA_DIR, item.filename));
+    }
+    item.deletedAt = now();
+    audit('media.archive', req.cmsUser, { mediaId: item.id });
+    writeStore();
+    res.status(204).end();
+  };
+  archive().catch((error) => { res.status(500).json({ error: 'MEDIA_DELETE_FAILED', detail: error.message }); });
 });
 
 app.get('/api/cms/activity', requireAuth, (_req, res) => {
   res.json({ activity: store.audit.slice(0, 100) });
+});
+
+app.get('/api/cms/signatures', requireAuth, (_req, res) => {
+  res.json({ signatures: store.signatures });
+});
+
+app.post('/api/cms/signatures', requireAuth, requireEditor, requireCsrf, (req, res) => {
+  const input = req.body || {};
+  const clean = (value, max) => String(value || '').trim().slice(0, max);
+  const signature = {
+    id: crypto.randomUUID(),
+    name: clean(input.name, 160),
+    role: clean(input.role, 160),
+    phone: clean(input.phone, 80),
+    email: clean(input.email, 254).toLowerCase(),
+    address1: clean(input.address1, 180),
+    address2: clean(input.address2, 180),
+    baseUrl: clean(input.baseUrl, 500),
+    createdAt: now(),
+    updatedAt: now(),
+    createdBy: req.cmsUser.email
+  };
+  if (!signature.name || !signature.email || !/^\S+@\S+\.\S+$/.test(signature.email)) return res.status(422).json({ error: 'SIGNATURE_FIELDS_INVALID' });
+  store.signatures.unshift(signature);
+  store.signatures = store.signatures.slice(0, 200);
+  audit('signature.create', req.cmsUser, { signatureId: signature.id, name: signature.name });
+  writeStore();
+  res.status(201).json({ signature });
+});
+
+app.patch('/api/cms/signatures/:id', requireAuth, requireEditor, requireCsrf, (req, res) => {
+  const signature = store.signatures.find((item) => item.id === req.params.id);
+  if (!signature) return res.status(404).json({ error: 'SIGNATURE_NOT_FOUND' });
+  const clean = (value, max) => String(value || '').trim().slice(0, max);
+  for (const [key, max] of Object.entries({ name: 160, role: 160, phone: 80, email: 254, address1: 180, address2: 180, baseUrl: 500 })) {
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) signature[key] = clean(req.body[key], max);
+  }
+  if (!signature.name || !/^\S+@\S+\.\S+$/.test(signature.email)) return res.status(422).json({ error: 'SIGNATURE_FIELDS_INVALID' });
+  signature.updatedAt = now();
+  audit('signature.update', req.cmsUser, { signatureId: signature.id });
+  writeStore();
+  res.json({ signature });
+});
+
+app.delete('/api/cms/signatures/:id', requireAuth, requireEditor, requireCsrf, (req, res) => {
+  const index = store.signatures.findIndex((item) => item.id === req.params.id);
+  if (index === -1) return res.status(404).json({ error: 'SIGNATURE_NOT_FOUND' });
+  const [signature] = store.signatures.splice(index, 1);
+  audit('signature.delete', req.cmsUser, { signatureId: signature.id });
+  writeStore();
+  res.status(204).end();
 });
 
 app.get('/api/cms/submissions', requireAuth, (req, res) => {
@@ -878,6 +1034,23 @@ app.use(async (req, res, next) => {
 });
 
 app.get('/cms-bridge.js', (_req, res) => res.sendFile(path.join(ROOT, 'public', 'cms-bridge.js')));
+app.use('/firma-assets', express.static(path.join(ROOT, 'firma-cms', 'assets'), { maxAge: '1h' }));
+app.get('/cms-media/:filename', async (req, res, next) => {
+  const filename = decodeURIComponent(req.params.filename);
+  const item = store.media.find((candidate) => candidate.filename === filename && !candidate.deletedAt);
+  if (item?.storage === 'replit-app-storage') {
+    try {
+      const result = await downloadStorageFile(filename);
+      if (!result.ok) return res.status(404).json({ error: 'MEDIA_NOT_FOUND' });
+      res.type(item.mime || 'application/octet-stream').send(result.value);
+    } catch (error) {
+      next(error);
+    }
+    return;
+  }
+  if (item?.storage === 'local' || !item) return res.sendFile(path.join(MEDIA_DIR, filename), { fallthrough: true }, next);
+  return res.status(404).json({ error: 'MEDIA_NOT_FOUND' });
+});
 app.use('/cms-media', express.static(MEDIA_DIR, { fallthrough: false, maxAge: '1h' }));
 app.use('/admin', express.static(ADMIN_DIR, { index: 'index.html', maxAge: 0 }));
 // HTML and hashed bundles are versioned in the exported site. Keep the static

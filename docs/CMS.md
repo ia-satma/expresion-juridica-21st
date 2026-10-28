@@ -24,6 +24,8 @@ El primer registro de `ia@satma.mx` se convierte en `owner` (puedes cambiarlo co
 
 El CMS utiliza exclusivamente correo y contraseña. El propietario crea cada usuario desde `Usuarios y accesos`; el sistema genera una contraseña temporal aleatoria, la muestra una sola vez al propietario y obliga al usuario a cambiarla por una contraseña propia de mínimo 8 caracteres en su primer acceso.
 
+Los datos se separan por `CMS_DATA_SCOPE`: usa `development` en el workspace y `production` en el Deployment. Las imágenes y videos usan Replit App Storage con prefijos separados por entorno; en `App Storage` del CMS puedes cargar todos los medios del sitio al bucket conectado. Para una carga inicial desde Shell también puedes ejecutar `node server/import-site-media.mjs`.
+
 ## Contenido
 
 - `GET /admin/` abre el panel.

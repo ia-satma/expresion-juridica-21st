@@ -14,6 +14,8 @@ const state = {
   settings: null,
   users: [],
   submissions: [],
+  signatures: [],
+  currentSignature: null,
   setup: false
 };
 
@@ -124,13 +126,14 @@ function showApp() {
 
 function navigate(view) {
   state.view = view;
-  const titles = { home: 'Inicio', dashboard: 'Resumen', pages: 'Páginas', media: 'App Storage', revisions: 'Versiones', activity: 'Actividad', submissions: 'Solicitudes', settings: 'Ajustes', users: 'Usuarios' };
+  const titles = { home: 'Inicio', dashboard: 'Resumen', pages: 'Páginas', signatures: 'Firmas de correo', media: 'App Storage', revisions: 'Versiones', activity: 'Actividad', submissions: 'Solicitudes', settings: 'Ajustes', users: 'Usuarios' };
   $('#view-title').textContent = titles[view] || 'CMS';
   $$('.nav-item[data-view]').forEach((button) => button.classList.toggle('is-active', button.dataset.view === view));
   $$('.content-view').forEach((section) => { section.hidden = section.id !== `${view}-view`; });
   if (view === 'home') loadHome();
   if (view === 'dashboard') loadDashboard();
   if (view === 'pages') loadPages();
+  if (view === 'signatures') loadSignatures();
   if (view === 'media') loadMedia();
   if (view === 'revisions') loadRevisions();
   if (view === 'activity') loadActivity();
@@ -172,13 +175,30 @@ async function loadDashboard() {
 }
 
 function homeSectionLabel(section) {
+  const key = String(section || '/').trim().toLowerCase();
   const labels = {
-    SEO: 'SEO de la portada',
+    seo: 'SEO de la portada',
     header: 'Cabecera y navegación',
     footer: 'Pie de página',
+    firma: 'La firma',
+    areas: 'Áreas de práctica legal',
+    red: 'La red',
+    metodo: 'Cómo trabajamos',
+    casos: 'Casos y experiencia',
+    sede: 'Sede en Xalapa',
+    analisis: 'Análisis',
+    cierre: 'Contacto',
     '/': 'General'
   };
-  return labels[section] || section || 'General';
+  if (labels[key]) return labels[key];
+  if (key.includes('áreas') || key.includes('areas')) return 'Áreas de práctica legal';
+  if (key.includes('firma')) return 'La firma';
+  if (key.includes('red')) return 'La red';
+  if (key.includes('trabajamos') || key.includes('método') || key.includes('metodo')) return 'Cómo trabajamos';
+  if (key.includes('casos') || key.includes('experiencia')) return 'Casos y experiencia';
+  if (key.includes('sede')) return 'Sede en Xalapa';
+  if (key.includes('análisis') || key.includes('analisis')) return 'Análisis';
+  return section || 'General';
 }
 
 function homeFieldCard(field) {
@@ -226,7 +246,9 @@ async function loadHome() {
 }
 
 function renderPageList() {
-  $('#page-list').innerHTML = `<div class="page-list-heading"><p class="eyebrow">Rutas</p><strong>${state.pages.length} páginas</strong></div>` + state.pages.map((page) => `<button class="page-list-item ${state.selectedPage === page.page ? 'is-active' : ''}" data-page-route="${escapeHtml(page.page)}"><span><strong>${escapeHtml(page.title || page.page)}</strong><span>${escapeHtml(page.page)} · ${escapeHtml(page.fieldCount)} campos</span></span><em>${page.draftFields || 0}</em></button>`).join('');
+  const groups = new Map();
+  state.pages.forEach((page) => { const key = page.category || 'Páginas institucionales'; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(page); });
+  $('#page-list').innerHTML = `<div class="page-list-heading"><p class="eyebrow">Contenido del sitio</p><strong>${state.pages.length} páginas editables</strong></div>` + [...groups.entries()].map(([category, pages]) => `<section class="page-list-group"><p class="page-list-group-title">${escapeHtml(category)}</p>${pages.map((page) => `<button class="page-list-item ${state.selectedPage === page.page ? 'is-active' : ''}" data-page-route="${escapeHtml(page.page)}"><span><strong>${escapeHtml(page.title || page.page)}</strong><span>${escapeHtml(page.page)} · ${escapeHtml(page.fieldCount)} campos</span></span><em>${page.draftFields || 0}</em></button>`).join('')}</section>`).join('');
   $$('.page-list-item').forEach((button) => button.addEventListener('click', () => { state.selectedPage = button.dataset.pageRoute; renderPageList(); loadEditor(); }));
 }
 
@@ -359,7 +381,7 @@ function renderMedia() {
 }
 
 async function loadMedia() {
-  try { const search = $('#media-search')?.value || ''; const params = new URLSearchParams({ ...(state.mediaFolder ? { folder: state.mediaFolder } : {}), ...(search ? { search } : {}) }); const response = await api(`/api/cms/media?${params}`); state.media = response.media; state.mediaFolders = response.folders || []; renderMedia(); } catch (error) { notify('No se pudo cargar la biblioteca.', 'error'); }
+  try { const search = $('#media-search')?.value || ''; const params = new URLSearchParams({ ...(state.mediaFolder ? { folder: state.mediaFolder } : {}), ...(search ? { search } : {}) }); const response = await api(`/api/cms/media?${params}`); state.media = response.media; state.mediaFolders = response.folders || []; const status = $('#storage-status'); if (status) status.textContent = response.storage?.provider === 'replit-app-storage' ? `Replit App Storage · ${response.storage.scope}` : `Almacenamiento local · ${response.storage?.scope || 'development'}`; renderMedia(); } catch (error) { notify('No se pudo cargar la biblioteca.', 'error'); }
 }
 
 async function saveMediaMeta(id) {
@@ -430,6 +452,7 @@ function fillSettings(settings) {
   set('setting-cookie-title', settings.cookie?.title);
   set('setting-cookie-text', settings.cookie?.text);
   set('setting-cookie-version', settings.cookie?.version);
+  set('setting-cookie-privacy', settings.cookie?.privacyUrl);
   set('setting-cookie-policy', settings.cookie?.policyUrl);
   set('setting-cookie-accept', settings.cookie?.acceptLabel);
   set('setting-cookie-reject', settings.cookie?.rejectLabel);
@@ -459,7 +482,7 @@ function readSettingsForm() {
     analytics: { enabled: checked('setting-analytics-enabled'), measurementId: value('setting-measurement') },
     cookie: {
       title: value('setting-cookie-title'), text: value('setting-cookie-text'), version: value('setting-cookie-version'),
-      policyUrl: value('setting-cookie-policy'), acceptLabel: value('setting-cookie-accept'), rejectLabel: value('setting-cookie-reject')
+      privacyUrl: value('setting-cookie-privacy'), policyUrl: value('setting-cookie-policy'), acceptLabel: value('setting-cookie-accept'), rejectLabel: value('setting-cookie-reject')
     },
     geo: {
       businessName: value('setting-geo-name'), email: value('setting-geo-email'), phone: value('setting-geo-phone'), street: value('setting-geo-street'),
@@ -509,6 +532,75 @@ async function uploadMedia(file) {
   try { await api('/api/cms/media', { method: 'POST', body: form }); notify('Archivo guardado en la biblioteca.'); await loadMedia(); } catch (error) { notify(`No se pudo subir: ${error.message}`, 'error'); }
 }
 
+const signatureDefaults = { name: '', role: '', phone: '', email: '', address1: 'Boulevard Europa No. 33,', address2: 'Xalapa, Veracruz.', baseUrl: '' };
+const signatureEsc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[char]);
+
+function signatureValues() {
+  const value = (id) => $(`#signature-${id}`)?.value || '';
+  return { name: value('name'), role: value('role'), phone: value('phone'), email: value('email'), address1: value('address1'), address2: value('address2'), baseUrl: value('base-url') };
+}
+
+function signatureAssetBase(value) {
+  let base = String(value.baseUrl || '').trim();
+  if (!base) base = `${window.location.origin}/firma-assets/email/`;
+  try { base = new URL(base, window.location.origin).href; } catch { base = `${window.location.origin}/firma-assets/email/`; }
+  return base.endsWith('/') ? base : `${base}/`;
+}
+
+function buildSignatureHtml(value) {
+  const base = signatureAssetBase(value);
+  const phone = String(value.phone || '').replace(/[^\d+]/g, '');
+  const tel = phone ? `<a href="tel:${signatureEsc(phone)}" style="color:#141A3A;text-decoration:none;">${signatureEsc(value.phone)}</a>` : '';
+  const mail = value.email ? `<a href="mailto:${signatureEsc(value.email)}" style="color:#141A3A;text-decoration:none;">${signatureEsc(value.email)}</a>` : '';
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;border-collapse:collapse;font-family:Arial,sans-serif;background:#fff;"><tr><td width="240" style="width:240px;padding:0;vertical-align:top;"><img src="${signatureEsc(`${base}logo.png`)}" width="240" height="220" alt="Expresión Jurídica Consultores" style="display:block;border:0;width:240px;height:220px;"></td><td width="360" height="220" valign="top" style="width:360px;height:220px;padding:30px 18px 0;background:#fff url('${signatureEsc(`${base}fondo-derecha.png`)}') no-repeat right top;background-size:360px 220px;color:#141A3A;"><div style="font:italic 21px Georgia,serif;color:#B08D57;line-height:1.1;">${signatureEsc(value.name)}</div><div style="font:12px Arial,sans-serif;color:#0C112B;margin-top:4px;">${signatureEsc(value.role)}</div><div style="font:12px Arial,sans-serif;margin-top:21px;line-height:1.45;">${tel}<br>${mail}<br>${signatureEsc(value.address1)}<br>${signatureEsc(value.address2)}</div></td></tr></table>`;
+}
+
+function renderSignatureEditor(value = signatureDefaults) {
+  const next = { ...signatureDefaults, ...value };
+  for (const key of Object.keys(signatureDefaults)) { const element = $(`#signature-${key === 'baseUrl' ? 'base-url' : key}`); if (element) element.value = next[key] || ''; }
+  const base = signatureAssetBase(next);
+  $('#signature-preview').innerHTML = `<div class="signature-preview-card"><img src="${signatureEsc(`${base}logo.png`)}" alt="" /><div class="signature-preview-copy"><strong>${signatureEsc(next.name || 'Nombre Apellido')}</strong><b>${signatureEsc(next.role || 'Cargo')}</b>${next.phone ? `<a href="tel:${signatureEsc(next.phone)}">${signatureEsc(next.phone)}</a>` : ''}${next.email ? `<a href="mailto:${signatureEsc(next.email)}">${signatureEsc(next.email)}</a>` : ''}<span>${signatureEsc(next.address1)}</span><span>${signatureEsc(next.address2)}</span></div></div>`;
+  $('#signature-html').value = buildSignatureHtml(next);
+}
+
+function renderSavedSignatures() {
+  const list = $('#signatures-list');
+  list.innerHTML = state.signatures.map((signature) => `<div class="signature-saved-row"><div><strong>${signatureEsc(signature.name)}</strong><small>${signatureEsc(signature.role || 'Sin cargo')} · ${signatureEsc(signature.email)}</small></div><div class="signature-saved-actions"><button class="mini-button load-signature" data-signature-id="${signatureEsc(signature.id)}" type="button">Editar</button><button class="mini-button delete-signature" data-signature-id="${signatureEsc(signature.id)}" type="button">Eliminar</button></div></div>`).join('') || '<div class="empty-state"><span>Aún no hay firmas guardadas.</span></div>';
+  $$('.load-signature').forEach((button) => button.addEventListener('click', () => { const signature = state.signatures.find((item) => item.id === button.dataset.signatureId); if (signature) { state.currentSignature = signature; renderSignatureEditor(signature); } }));
+  $$('.delete-signature').forEach((button) => button.addEventListener('click', async () => { try { await api(`/api/cms/signatures/${encodeURIComponent(button.dataset.signatureId)}`, { method: 'DELETE' }); notify('Firma eliminada.'); await loadSignatures(); } catch (error) { notify(`No se eliminó la firma: ${error.message}`, 'error'); } }));
+}
+
+async function loadSignatures() {
+  try { const response = await api('/api/cms/signatures'); state.signatures = response.signatures || []; renderSavedSignatures(); if (!state.currentSignature) renderSignatureEditor(signatureDefaults); } catch { notify('No se pudieron cargar las firmas.', 'error'); }
+}
+
+async function saveSignature(event) {
+  event.preventDefault();
+  const value = signatureValues();
+  try {
+    const response = state.currentSignature
+      ? await api(`/api/cms/signatures/${encodeURIComponent(state.currentSignature.id)}`, { method: 'PATCH', body: value })
+      : await api('/api/cms/signatures', { method: 'POST', body: value });
+    state.currentSignature = response.signature;
+    notify('Firma guardada en el CMS.');
+    await loadSignatures();
+  } catch (error) { notify(`No se guardó la firma: ${error.message}`, 'error'); }
+}
+
+async function importSiteMedia() {
+  const button = $('#media-import-site');
+  if (button) { button.disabled = true; button.textContent = 'Cargando medios…'; }
+  try {
+    const result = await api('/api/cms/media/import-site', { method: 'POST', body: {} });
+    notify(`${result.imported} medios cargados en App Storage.`);
+    await loadMedia();
+  } catch (error) {
+    notify(error.code === 'APP_STORAGE_NOT_CONFIGURED' ? 'Primero crea y conecta un bucket de Replit App Storage.' : `No se cargaron los medios: ${error.message}`, 'error');
+  } finally {
+    if (button) { button.disabled = false; button.textContent = 'Cargar medios del sitio'; }
+  }
+}
+
 async function boot() {
   $('#auth-form').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -546,6 +638,11 @@ async function boot() {
   $('#home-search').addEventListener('input', filterHomeFields);
   $('#home-kind').addEventListener('change', filterHomeFields);
   $('#home-refresh').addEventListener('click', loadHome);
+  $('#signature-form').addEventListener('submit', saveSignature);
+  ['name', 'role', 'phone', 'email', 'address1', 'address2', 'base-url'].forEach((key) => $(`#signature-${key}`).addEventListener('input', () => renderSignatureEditor(signatureValues())));
+  $('#signature-reset').addEventListener('click', () => { state.currentSignature = null; renderSignatureEditor(signatureDefaults); });
+  $('#signature-copy-code').addEventListener('click', async () => { await navigator.clipboard?.writeText($('#signature-html').value); notify('Código de firma copiado.'); });
+  $('#signature-copy-rich').addEventListener('click', async () => { const html = $('#signature-html').value; try { if (navigator.clipboard?.write && window.ClipboardItem) await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([html], { type: 'text/plain' }) })]); else await navigator.clipboard?.writeText(html); notify('Firma copiada.'); } catch { await navigator.clipboard?.writeText(html); notify('Código de firma copiado.'); } });
   $('#save-settings').addEventListener('click', saveSettings);
   $('#settings-form').addEventListener('submit', (event) => { event.preventDefault(); saveSettings(); });
   $('#refresh-users').addEventListener('click', loadUsers);
@@ -568,6 +665,7 @@ async function boot() {
   });
   $('#refresh-inventory').addEventListener('click', async () => { try { await api('/api/cms/inventory/refresh', { method: 'POST', body: {} }); notify('Inventario actualizado.'); state.selectedPage = null; await loadPages(); } catch (error) { notify(`No se actualizó el inventario: ${error.message}`, 'error'); } });
   $('#media-upload').addEventListener('change', (event) => { const file = event.target.files?.[0]; if (file) uploadMedia(file); event.target.value = ''; });
+  $('#media-import-site').addEventListener('click', importSiteMedia);
   $('#media-search').addEventListener('input', () => loadMedia());
   document.addEventListener('click', (event) => { const target = event.target.closest('[data-view]'); if (target) navigate(target.dataset.view); });
   try {

@@ -1,15 +1,11 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { betterAuth } from 'better-auth';
 import { getMigrations } from 'better-auth/db/migration';
 import { admin as adminPlugin } from 'better-auth/plugins';
+import { AUTH_DB_FILE, DATA_DIR, SECRET_FILE } from './data-paths.mjs';
 
-const ROOT = process.cwd();
-const DATA_DIR = path.join(ROOT, 'data');
-const AUTH_DB_FILE = path.join(DATA_DIR, 'auth.sqlite');
-const SECRET_FILE = path.join(DATA_DIR, 'better-auth.secret');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 function authSecret() {

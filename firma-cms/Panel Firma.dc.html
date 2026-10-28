@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital@1&display=swap">
+<style>
+@font-face{font-family:"EJ Caslon";src:url("assets/fonts/libre-caslon-italic-subset.otf") format("opentype");font-style:italic;font-weight:400;}
+@font-face{font-family:"EJ Bahnschrift";src:url("assets/fonts/bahnschrift-subset.otf") format("opentype");font-weight:400;}
+html,body{margin:0;background:#F3F3F1;color:#0C112B;font-family:"EJ Bahnschrift",Bahnschrift,"Segoe UI",system-ui,sans-serif;}
+a{color:#B08D57;text-decoration:none;}
+a:hover{color:#0C112B;}
+</style>
+</helmet>
+<div data-screen-label="Panel" style="min-height:100vh;display:flex;flex-direction:column;">
+  <header style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 28px;background:#0C112B;color:#ffffff;flex-wrap:wrap;">
+    <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;">
+      <div style="font-family:'Libre Caslon Text',Georgia,serif;font-style:italic;font-size:22px;color:#B08D57;">Firma de correo</div>
+      <div style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#C9CBD4;">Expresión Jurídica Consultores</div>
+    </div>
+    <div style="font-size:13px;color:#C9CBD4;">{{ status }}</div>
+  </header>
+  <main style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:24px;padding:24px 28px 40px;align-items:start;max-width:1500px;width:100%;box-sizing:border-box;margin:0 auto;">
+    <section style="display:flex;flex-direction:column;gap:14px;background:#ffffff;border:1px solid #E2E2DE;border-radius:6px;padding:22px;max-width:420px;width:100%;box-sizing:border-box;">
+      <div style="font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:#6B6F80;">Datos</div>
+      <sc-for list="{{ fields }}" as="f" hint-placeholder-count="6">
+        <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:#3A3F55;">
+          <span>{{ f.label }}</span>
+          <input value="{{ f.value }}" onInput="{{ f.onInput }}" style="font:inherit;font-size:15px;color:#0C112B;padding:10px 12px;border:1px solid #D6D6D1;border-radius:4px;background:#FAFAF8;outline:none;" style-focus="border-color:#B08D57;background:#ffffff;">
+        </label>
+      </sc-for>
+      <div style="height:1px;background:#E2E2DE;margin:6px 0;"></div>
+      <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:#3A3F55;">
+        <span>URL pública de las imágenes</span>
+        <input value="{{ baseUrl }}" onInput="{{ onBase }}" placeholder="https://tudominio.com/firma/" style="font:inherit;font-size:14px;color:#0C112B;padding:10px 12px;border:1px solid #D6D6D1;border-radius:4px;background:#FAFAF8;outline:none;" style-focus="border-color:#B08D57;background:#ffffff;">
+        <span style="font-size:12px;color:#6B6F80;line-height:1.45;text-wrap:pretty;">Carpeta donde subas logo.png y fondo-derecha.png (assets/email/). Vacío = rutas relativas.</span>
+      </label>
+      <button onClick="{{ reset }}" style="align-self:flex-start;font:inherit;font-size:13px;padding:8px 12px;border:1px solid #D6D6D1;border-radius:4px;background:#ffffff;color:#3A3F55;cursor:pointer;" style-hover="border-color:#0C112B;color:#0C112B;">Restablecer valores</button>
+    </section>
+    <section style="display:flex;flex-direction:column;gap:24px;min-width:0;grid-column:span 2;">
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:#6B6F80;">Plantilla</div>
+        <div style="background:#ffffff;border:1px solid #E2E2DE;border-radius:6px;padding:16px;">
+          <dc-import name="Firma de Correo" nombre="{{ v.nombre }}" cargo="{{ v.cargo }}" telefono="{{ v.telefono }}" correo="{{ v.correo }}" direccion1="{{ v.direccion1 }}" direccion2="{{ v.direccion2 }}" hint-size="100%,300px"></dc-import>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+          <div style="font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:#6B6F80;">Versión HTML para correo · 600 × 220 px</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button onClick="{{ copyRich }}" style="font:inherit;font-size:13px;padding:9px 14px;border:1px solid #0C112B;border-radius:4px;background:#0C112B;color:#ffffff;cursor:pointer;" style-hover="background:#1E2550;">Copiar firma</button>
+            <button onClick="{{ copyCode }}" style="font:inherit;font-size:13px;padding:9px 14px;border:1px solid #0C112B;border-radius:4px;background:#ffffff;color:#0C112B;cursor:pointer;" style-hover="background:#F3F3F1;">Copiar código</button>
+            <button onClick="{{ downloadHtml }}" style="font:inherit;font-size:13px;padding:9px 14px;border:1px solid #D6D6D1;border-radius:4px;background:#ffffff;color:#0C112B;cursor:pointer;" style-hover="border-color:#0C112B;">Descargar .html</button>
+            <button onClick="{{ downloadPng }}" style="font:inherit;font-size:13px;padding:9px 14px;border:1px solid #D6D6D1;border-radius:4px;background:#ffffff;color:#0C112B;cursor:pointer;" style-hover="border-color:#0C112B;">Descargar PNG</button>
+          </div>
+        </div>
+        <div style="background:#ffffff;border:1px solid #E2E2DE;border-radius:6px;padding:16px;overflow-x:auto;">
+          <iframe title="Vista HTML" srcdoc="{{ emailDoc }}" style="display:block;width:600px;height:220px;border:0;background:#ffffff;"></iframe>
+        </div>
+        <textarea readonly="readonly" value="{{ emailHtml }}" spellcheck="false" style="width:100%;box-sizing:border-box;height:240px;resize:vertical;font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:12px;line-height:1.5;color:#2A2F45;background:#ffffff;border:1px solid #E2E2DE;border-radius:6px;padding:14px;"></textarea>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const DEFAULTS = {
+  nombre: 'Nombre Apellido', cargo: 'Socio Fundador', telefono: '00 0000 0000',
+  correo: 'expresionjuridica@live.com', direccion1: 'Boulevard Europa No. 33,',
+  direccion2: 'Fraccionamiento Montemagno, Xalapa, Veracruz.'
+};
+const LABELS = { nombre: 'Nombre', cargo: 'Cargo', telefono: 'Teléfono', correo: 'Correo', direccion1: 'Dirección (línea 1)', direccion2: 'Dirección (línea 2)' };
+const PW = 2087.971, PH = 767.057;
+const SERIF = "'EJ Caslon','Libre Caslon Text',Georgia,serif";
+const SANS = "'EJ Bahnschrift',Bahnschrift,'DIN Alternate','Arial Narrow',Arial,sans-serif";
+// Geometry from the PDF (points; baseline measured from top)
+const LINES = [
+  { key: 'nombre', serif: true, size: 80, x: 891.016, base: PH - 592.309, color: '#B08D57', ls: 0, ws: -0.041 },
+  { key: 'cargo', size: 47.0786, x: 885.185, base: PH - 514.104, color: '#0C112B', ls: 0, ws: 0 },
+  { key: 'telefono', size: 43, x: 992.543, base: PH - 343.561, color: '#141A3A', ls: -0.019, ws: 0.019, href: v => 'tel:' + v.replace(/[^\d+]/g, '') },
+  { key: 'correo', size: 43, x: 992.543, base: PH - 238.6, color: '#141A3A', ls: -0.019, ws: 0.019, href: v => 'mailto:' + v.trim() },
+  { key: 'direccion1', size: 43, x: 992.543, base: PH - 143.4, color: '#141A3A', ls: -0.019, ws: 0.019 },
+  { key: 'direccion2', size: 43, x: 992.543, base: PH - 97.3, color: '#141A3A', ls: -0.019, ws: 0.019 }
+];
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const r2 = n => Math.round(n * 100) / 100;
+const STORE = 'ej-firma-panel-v1';
+
+class Component extends DCLogic {
+  state = (() => { try { return { v: { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORE) || '{}').v || {}) }, baseUrl: JSON.parse(localStorage.getItem(STORE) || '{}').baseUrl || '', status: '' }; } catch (e) { return { v: { ...DEFAULTS }, baseUrl: '', status: '' }; } })();
+
+  save(next) { this.setState(next, () => { try { localStorage.setItem(STORE, JSON.stringify({ v: this.state.v, baseUrl: this.state.baseUrl })); } catch (e) {} }); }
+  flash(msg) { this.setState({ status: msg }); clearTimeout(this._t); this._t = setTimeout(() => this.setState({ status: '' }), 2400); }
+
+  base(absolute) {
+    let b = (this.state.baseUrl || '').trim();
+    if (!b) b = 'assets/email/';
+    if (!b.endsWith('/')) b += '/';
+    if (absolute) { try { b = new URL(b, location.href).href; } catch (e) {} }
+    return b;
+  }
+
+  buildEmail(absolute) {
+    const v = this.state.v, k = 600 / PW, LEFT = 240, H = 220, b = this.base(absolute);
+    const bg = b + 'fondo-derecha.png', logo = b + 'logo.png';
+    let y = 0, rows = '';
+    for (const L of LINES) {
+      const s = L.size * k, lh = L.serif ? Math.round(s * 1.25) : Math.round(s * 1.05);
+      const asc = L.serif ? (lh - 1.23 * s) / 2 + 0.97 * s : (lh - s) / 2 + 0.794 * s;
+      const top = Math.round(L.base * k - asc);
+      if (top > y) rows += `<tr><td height="${top - y}" style="height:${top - y}px;line-height:${top - y}px;font-size:1px;mso-line-height-rule:exactly;">&nbsp;</td></tr>\n`;
+      const st = `padding:0 0 0 ${r2(L.x * k - LEFT)}px;height:${lh}px;line-height:${lh}px;mso-line-height-rule:exactly;font-family:${L.serif ? SERIF : SANS};font-size:${r2(s)}px;${L.serif ? 'font-style:italic;' : ''}font-weight:400;color:${L.color};white-space:nowrap;${L.ls ? `letter-spacing:${L.ls}em;` : ''}${L.ws ? `word-spacing:${L.ws}em;` : ''}`;
+      const val = esc(v[L.key] || '');
+      const inner = L.href && v[L.key] ? `<a href="${esc(L.href(v[L.key]))}" style="color:${L.color};text-decoration:none;">${val}</a>` : val;
+      rows += `<tr><td style="${st}">${inner}</td></tr>\n`;
+      y = top + lh;
+    }
+    if (y < H) rows += `<tr><td height="${H - y}" style="height:${H - y}px;line-height:${H - y}px;font-size:1px;mso-line-height-rule:exactly;">&nbsp;</td></tr>\n`;
+    return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;border-collapse:collapse;mso-table-lspace:0;mso-table-rspace:0;">
+<tr>
+<td width="${LEFT}" valign="top" style="width:${LEFT}px;padding:0;vertical-align:top;font-size:0;line-height:0;"><img src="${esc(logo)}" width="${LEFT}" height="${H}" alt="Expresión Jurídica Consultores" style="display:block;width:${LEFT}px;height:${H}px;border:0;outline:none;"></td>
+<td width="${600 - LEFT}" height="${H}" valign="top" background="${esc(bg)}" bgcolor="#ffffff" style="width:${600 - LEFT}px;height:${H}px;padding:0;vertical-align:top;background-color:#ffffff;background-image:url('${esc(bg)}');background-repeat:no-repeat;background-position:0 0;background-size:${600 - LEFT}px ${H}px;">
+<!--[if gte mso 9]><v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:270pt;height:165pt;"><v:fill type="frame" src="${esc(bg)}" color="#ffffff" /><v:textbox inset="0,0,0,0"><![endif]-->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="${600 - LEFT}" style="width:${600 - LEFT}px;border-collapse:collapse;">
+${rows}</table>
+<!--[if gte mso 9]></v:textbox></v:rect><![endif]-->
+</td>
+</tr>
+</table>`;
+  }
+
+  docWrap(body) {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital@1&display=swap"><style>@font-face{font-family:"EJ Caslon";src:url("${new URL('assets/fonts/libre-caslon-italic-subset.otf', location.href).href}");font-style:italic;}@font-face{font-family:"EJ Bahnschrift";src:url("${new URL('assets/fonts/bahnschrift-subset.otf', location.href).href}");}body{margin:0;background:#fff;}</style></head><body>${body}</body></html>`;
+  }
+
+  async copyText(t, html) {
+    try {
+      if (html && window.ClipboardItem) await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([t], { type: 'text/plain' }) })]);
+      else await navigator.clipboard.writeText(t);
+      this.flash('Copiado');
+    } catch (e) {
+      const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); this.flash('Copiado');
+    }
+  }
+
+  download(name, blob) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
+
+  async png() {
+    const img = new Image(); img.src = 'assets/firma-fondo.png'; await img.decode();
+    const S = img.naturalWidth / PW, c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
+    try { await Promise.all([document.fonts.load(`italic 80px "EJ Caslon"`), document.fonts.load(`italic 80px "Libre Caslon Text"`), document.fonts.load(`43px "EJ Bahnschrift"`)]); } catch (e) {}
+    ctx.textBaseline = 'alphabetic';
+    for (const L of LINES) {
+      const s = L.size * S; ctx.fillStyle = L.color;
+      ctx.font = `${L.serif ? 'italic ' : ''}400 ${s}px ${L.serif ? SERIF : SANS}`;
+      if ('letterSpacing' in ctx) ctx.letterSpacing = (L.ls * s) + 'px';
+      if ('wordSpacing' in ctx) ctx.wordSpacing = (L.ws * s) + 'px';
+      ctx.fillText(this.state.v[L.key] || '', L.x * S, L.base * S);
+    }
+    c.toBlob(b => { this.download('firma-expresion-juridica.png', b); this.flash('PNG descargado'); }, 'image/png');
+  }
+
+  renderVals() {
+    const v = this.state.v;
+    const html = this.buildEmail(false);
+    return {
+      v, status: this.state.status, baseUrl: this.state.baseUrl,
+      fields: Object.keys(DEFAULTS).map(key => ({ label: LABELS[key], value: v[key], onInput: e => this.save({ v: { ...this.state.v, [key]: e.target.value } }) })),
+      onBase: e => this.save({ baseUrl: e.target.value }),
+      reset: () => this.save({ v: { ...DEFAULTS } }),
+      emailHtml: html,
+      emailDoc: this.docWrap(this.buildEmail(true)),
+      copyCode: () => this.copyText(html),
+      copyRich: () => { const h = this.buildEmail(true); this.copyText(h, h); },
+      downloadHtml: () => { this.download('firma-expresion-juridica.html', new Blob([this.docWrap(this.buildEmail(!!this.state.baseUrl.trim()))], { type: 'text/html' })); this.flash('HTML descargado'); },
+      downloadPng: () => this.png()
+    };
+  }
+}
+</script>
+</body>
+</html>

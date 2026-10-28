@@ -78,10 +78,12 @@
     banner.setAttribute('role', 'dialog');
     const title = cookie.title || 'Privacidad y cookies';
     const text = cookie.text || '';
+    const privacyUrl = safeUrl(cookie.privacyUrl || '/aviso-de-privacidad/');
+    const policyUrl = safeUrl(cookie.policyUrl || '/politica-de-cookies/');
     const rejectLabel = cookie.rejectLabel || 'Rechazar analítica';
     const acceptLabel = cookie.acceptLabel || 'Aceptar analítica';
     banner.setAttribute('aria-label', title);
-    banner.innerHTML = `<div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(text)} <a href="${escapeHtml(safeUrl(cookie.policyUrl || '/politica-de-cookies/'))}">Ver política</a></p></div><div class="cms-cookie-actions"><button type="button" data-cms-cookie="reject">${escapeHtml(rejectLabel)}</button><button type="button" data-cms-cookie="accept">${escapeHtml(acceptLabel)}</button></div>`;
+    banner.innerHTML = `<div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(text)} Consulta el <a href="${escapeHtml(privacyUrl)}">aviso de privacidad</a> y la <a href="${escapeHtml(policyUrl)}">política de cookies</a>.</p></div><div class="cms-cookie-actions"><button type="button" data-cms-cookie="reject">${escapeHtml(rejectLabel)}</button><button type="button" data-cms-cookie="accept">${escapeHtml(acceptLabel)}</button></div>`;
     const style = document.createElement('style');
     style.dataset.cmsCookieStyle = 'true';
     style.textContent = '#cms-cookie-banner{position:fixed;z-index:1000;left:1rem;right:1rem;bottom:1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;max-width:1080px;margin:auto;padding:1rem 1.2rem;background:#0c112b;color:#f0ede7;border:1px solid rgba(201,169,110,.65);box-shadow:0 16px 40px rgba(0,0,0,.22);font:14px/1.45 Manrope,system-ui,sans-serif}#cms-cookie-banner strong{display:block;color:#c9a96e;font-size:12px;letter-spacing:.08em;text-transform:uppercase}#cms-cookie-banner p{margin:.25rem 0 0;color:rgba(240,237,231,.82)}#cms-cookie-banner a{color:#c9a96e;text-decoration:underline;text-underline-offset:3px}.cms-cookie-actions{display:flex;gap:.55rem;flex-shrink:0}.cms-cookie-actions button{border:1px solid rgba(201,169,110,.7);padding:.6rem .8rem;background:transparent;color:#f0ede7;font:600 12px Manrope,system-ui,sans-serif;cursor:pointer}.cms-cookie-actions button[data-cms-cookie="accept"]{background:#c9a96e;color:#0c112b}@media(max-width:650px){#cms-cookie-banner{display:block;bottom:.5rem;padding:1rem}.cms-cookie-actions{margin-top:.8rem}.cms-cookie-actions button{width:50%}}';

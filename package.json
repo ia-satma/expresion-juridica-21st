@@ -7,12 +7,14 @@
   "scripts": {
     "start": "node server/index.mjs",
     "dev": "node --watch server/index.mjs",
-    "inventory": "node server/inventory.mjs"
+    "inventory": "node server/inventory.mjs",
+    "media:import": "node server/import-site-media.mjs"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "@replit/object-storage": "^1.0.0",
     "better-auth": "^1.7.14",
     "better-sqlite3": "^11.10.0",
     "cheerio": "^1.2.0",
