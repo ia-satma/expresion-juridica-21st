@@ -481,7 +481,11 @@ async function saveSettings() {
 function renderUsers() {
   const list = $('#users-list');
   if (!state.users.length) { list.innerHTML = '<div class="empty-state"><span>No hay usuarios registrados.</span></div>'; return; }
-  list.innerHTML = state.users.map((user) => `<div class="user-row"><div class="user-identity"><strong>${escapeHtml(user.name || user.email)}</strong><small>${escapeHtml(user.email)} · alta ${escapeHtml(formatDate(user.createdAt))}</small></div><div class="user-controls"><select class="user-role" data-user-id="${escapeHtml(user.id)}" ${user.role === 'owner' && state.users.filter((candidate) => candidate.role === 'owner').length === 1 ? 'data-last-owner="true"' : ''}><option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Propietario</option><option value="editor" ${user.role === 'editor' ? 'selected' : ''}>Editor</option><option value="viewer" ${user.role === 'viewer' ? 'selected' : ''}>Visualizador</option></select><button type="button" class="mini-button user-status" data-user-id="${escapeHtml(user.id)}" data-disabled="${user.banned ? 'false' : 'true'}" ${user.role === 'owner' ? 'disabled' : ''}>${user.banned ? 'Activar' : 'Revocar'}</button></div></div>`).join('');
+  const owners = state.users.filter((candidate) => candidate.role === 'owner' && !candidate.banned).length;
+  list.innerHTML = state.users.map((user) => {
+    const access = user.pending ? 'Google · invitación pendiente' : user.provider === 'google' ? 'Google' : 'Correo y contraseña';
+    return `<div class="user-row"><div class="user-identity"><strong>${escapeHtml(user.name || user.email)}</strong><small>${escapeHtml(user.email)} · ${escapeHtml(access)} · alta ${escapeHtml(formatDate(user.createdAt))}</small></div><div class="user-controls"><select class="user-role" data-user-id="${escapeHtml(user.id)}" ${user.role === 'owner' && owners === 1 ? 'data-last-owner="true"' : ''}><option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Propietario</option><option value="editor" ${user.role === 'editor' ? 'selected' : ''}>Editor</option><option value="viewer" ${user.role === 'viewer' ? 'selected' : ''}>Visualizador</option></select><button type="button" class="mini-button user-status" data-user-id="${escapeHtml(user.id)}" data-disabled="${user.banned ? 'false' : 'true'}" ${user.role === 'owner' ? 'disabled' : ''}>${user.banned ? 'Activar' : 'Revocar'}</button></div></div>`;
+  }).join('');
   $$('.user-role', list).forEach((select) => select.addEventListener('change', () => updateUserRole(select.dataset.userId, select.value, select)));
   $$('.user-status', list).forEach((button) => button.addEventListener('click', () => updateUserStatus(button.dataset.userId, button.dataset.disabled === 'true')));
 }
@@ -525,12 +529,20 @@ async function boot() {
   $('#save-settings').addEventListener('click', saveSettings);
   $('#settings-form').addEventListener('submit', (event) => { event.preventDefault(); saveSettings(); });
   $('#refresh-users').addEventListener('click', loadUsers);
+  $('#user-auth-method').addEventListener('change', () => {
+    const google = $('#user-auth-method').value === 'google';
+    $('#user-password-field').hidden = google;
+    $('#user-password').required = !google;
+    $('#user-google-help').hidden = !google;
+  });
   $('#submission-status-filter').addEventListener('change', loadSubmissions);
   $('#user-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     try {
-      await api('/api/cms/users', { method: 'POST', body: { name: $('#user-name').value, email: $('#user-email').value, password: $('#user-password').value, role: $('#user-role').value } });
+      const authMethod = $('#user-auth-method').value;
+      await api('/api/cms/users', { method: 'POST', body: { name: $('#user-name').value, email: $('#user-email').value, authMethod, password: authMethod === 'google' ? undefined : $('#user-password').value, role: $('#user-role').value } });
       event.target.reset();
+      $('#user-auth-method').dispatchEvent(new Event('change'));
       notify('Usuario creado.');
       await loadUsers();
     } catch (error) { notify(`No se creó el usuario: ${error.message}`, 'error'); }

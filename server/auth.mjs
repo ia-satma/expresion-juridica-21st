@@ -33,15 +33,6 @@ authDatabase.pragma('foreign_keys = ON');
 
 const baseUrl = process.env.BETTER_AUTH_URL || process.env.REPLIT_DEPLOYMENT_URL || `http://localhost:${process.env.PORT || 3000}`;
 const trustedOrigins = [baseUrl, 'https://expresion-juridica-21-st.replit.app', process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null, process.env.REPLIT_DEPLOYMENT_URL].filter(Boolean);
-const googleAllowedDomain = String(process.env.CMS_GOOGLE_ALLOWED_DOMAIN || 'satma.mx').trim().toLowerCase().replace(/^@/, '');
-
-function allowedGoogleEmail(email) {
-  const normalized = String(email || '').trim().toLowerCase();
-  if (!normalized || !normalized.includes('@')) return false;
-  if (normalized === String(process.env.CMS_OWNER_EMAIL || 'ia@satma.mx').trim().toLowerCase()) return true;
-  return googleAllowedDomain && normalized.endsWith(`@${googleAllowedDomain}`);
-}
-
 const socialProviders = googleAuthEnabled ? {
   google: {
     clientId: GOOGLE_CLIENT_ID,
@@ -74,9 +65,11 @@ export const auth = betterAuth({
   user: {
     validateUserInfo: ({ user, source }) => {
       if (source.method !== 'oauth' || source.oauth?.providerId !== 'google') return;
-      if (!allowedGoogleEmail(user.email)) return {
-        error: 'GOOGLE_DOMAIN_NOT_ALLOWED',
-        errorDescription: `Sólo se permiten cuentas de Google de ${googleAllowedDomain}.`
+      // Google identities are authenticated by Google. CMS authorization is
+      // checked after the callback so invited clients can use any domain.
+      if (!String(user.email || '').includes('@')) return {
+        error: 'GOOGLE_EMAIL_REQUIRED',
+        errorDescription: 'La cuenta de Google debe incluir un correo verificable.'
       };
     }
   },

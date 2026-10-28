@@ -127,13 +127,26 @@ function cmsAdminFor(session) {
   return store.authAdmins.find((admin) => admin.userId === session.user.id) || null;
 }
 
+function emailKey(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
 function authRoleForCmsRole(role) {
   return role === 'owner' ? 'admin' : 'user';
 }
 
 function googleEmailAllowed(email) {
-  const normalized = String(email || '').trim().toLowerCase();
-  return normalized === OWNER_EMAIL || (GOOGLE_ALLOWED_DOMAIN && normalized.endsWith(`@${GOOGLE_ALLOWED_DOMAIN}`));
+  const normalized = emailKey(email);
+  return Boolean(normalized && normalized.includes('@') && (normalized === OWNER_EMAIL || (GOOGLE_ALLOWED_DOMAIN && normalized.endsWith(`@${GOOGLE_ALLOWED_DOMAIN}`))));
+}
+
+function pendingGoogleInvite(email) {
+  const normalized = emailKey(email);
+  return store.authAdmins.find((admin) => !admin.userId && admin.provider === 'google' && !admin.banned && emailKey(admin.email) === normalized) || null;
+}
+
+function cmsAdminRecordForId(id) {
+  return store.authAdmins.find((admin) => admin.userId === id || admin.id === id) || null;
 }
 
 function hasGoogleAccount(userId) {
@@ -466,14 +479,26 @@ app.get('/api/cms/auth-state', async (req, res) => {
   let admin = cmsAdminFor(session);
   if (!admin && store.authAdmins.length === 0) {
     if (String(session.user.email || '').toLowerCase() !== OWNER_EMAIL) return res.status(403).json({ error: 'OWNER_EMAIL_REQUIRED' });
-    admin = { userId: session.user.id, email: session.user.email, role: 'owner', createdAt: now() };
+    admin = { id: crypto.randomUUID(), userId: session.user.id, email: session.user.email, role: 'owner', provider: hasGoogleAccount(session.user.id) ? 'google' : 'password', createdAt: now() };
     store.authAdmins.push(admin);
     syncBetterAuthRole(session.user.id, admin.role);
     audit('auth.bootstrap', session.user);
     writeStore();
   }
+  if (!admin && hasGoogleAccount(session.user.id)) {
+    const invite = pendingGoogleInvite(session.user.email);
+    if (invite) {
+      invite.userId = session.user.id;
+      invite.pending = false;
+      invite.updatedAt = now();
+      admin = invite;
+      syncBetterAuthRole(session.user.id, admin.role);
+      audit('auth.google.invite.accept', session.user, { role: admin.role });
+      writeStore();
+    }
+  }
   if (!admin && store.authAdmins.length && hasGoogleAccount(session.user.id) && googleEmailAllowed(session.user.email)) {
-    admin = { userId: session.user.id, email: session.user.email, role: session.user.email.toLowerCase() === OWNER_EMAIL ? 'owner' : GOOGLE_DEFAULT_ROLE, provider: 'google', createdAt: now() };
+    admin = { id: crypto.randomUUID(), userId: session.user.id, email: session.user.email, role: session.user.email.toLowerCase() === OWNER_EMAIL ? 'owner' : GOOGLE_DEFAULT_ROLE, provider: 'google', createdAt: now() };
     store.authAdmins.push(admin);
     syncBetterAuthRole(session.user.id, admin.role);
     audit('auth.google.bootstrap', session.user, { role: admin.role, domain: GOOGLE_ALLOWED_DOMAIN });
@@ -714,7 +739,22 @@ app.get('/api/cms/users', requireAuth, requireOwner, async (req, res, next) => {
       headers: fromNodeHeaders(req.headers)
     });
     const users = (result?.users || []).filter((user) => cmsRoleForUser(user)).map(userPayload);
-    res.json({ users, total: users.length });
+    const pendingInvites = store.authAdmins
+      .filter((admin) => !admin.userId && admin.provider === 'google')
+      .map((admin) => ({
+        id: admin.id,
+        name: admin.name || admin.email,
+        email: admin.email,
+        role: admin.role,
+        authRole: 'pending',
+        banned: Boolean(admin.banned),
+        banReason: admin.banReason || '',
+        pending: true,
+        provider: 'google',
+        createdAt: admin.createdAt,
+        updatedAt: admin.updatedAt || admin.createdAt
+      }));
+    res.json({ users: [...users, ...pendingInvites], total: users.length + pendingInvites.length });
   } catch (error) {
     next(error);
   }
@@ -726,14 +766,24 @@ app.post('/api/cms/users', requireAuth, requireOwner, requireCsrf, async (req, r
     const name = String(req.body?.name || '').trim();
     const password = String(req.body?.password || '');
     const role = ['owner', 'editor', 'viewer'].includes(req.body?.role) ? req.body.role : 'editor';
-    if (!email || !name || password.length < 8) return res.status(400).json({ error: 'USER_FIELDS_INVALID' });
+    const authMethod = req.body?.authMethod === 'google' ? 'google' : 'password';
+    if (!email || !name || !/^\S+@\S+\.\S+$/.test(email) || (authMethod === 'password' && password.length < 8)) return res.status(400).json({ error: 'USER_FIELDS_INVALID' });
+    const existingCmsAccess = store.authAdmins.find((admin) => emailKey(admin.email) === email && !admin.banned);
+    if (existingCmsAccess) return res.status(409).json({ error: 'USER_ALREADY_AUTHORIZED' });
+    if (authMethod === 'google') {
+      const invite = { id: crypto.randomUUID(), userId: null, email, name, role, provider: 'google', pending: true, banned: false, createdAt: now() };
+      store.authAdmins.push(invite);
+      audit('auth.google.invite', req.cmsUser, { email, role });
+      writeStore();
+      return res.status(201).json({ user: { id: invite.id, name, email, role, authRole: 'pending', pending: true, provider: 'google', banned: false, createdAt: invite.createdAt } });
+    }
     const result = await auth.api.createUser({
       body: { email, name, password, role: authRoleForCmsRole(role) },
       headers: fromNodeHeaders(req.headers)
     });
     const user = result?.user || result;
     if (!user?.id) return res.status(500).json({ error: 'USER_CREATE_FAILED' });
-    store.authAdmins.push({ userId: user.id, email: user.email, role, createdAt: now() });
+    store.authAdmins.push({ id: crypto.randomUUID(), userId: user.id, email: user.email, name: user.name, role, provider: 'password', createdAt: now() });
     syncBetterAuthRole(user.id, role);
     audit('auth.user.create', req.cmsUser, { userId: user.id, email: user.email, role });
     writeStore();
@@ -745,20 +795,22 @@ app.post('/api/cms/users', requireAuth, requireOwner, requireCsrf, async (req, r
 
 app.patch('/api/cms/users/:id/role', requireAuth, requireOwner, requireCsrf, async (req, res, next) => {
   try {
-    const target = store.authAdmins.find((admin) => admin.userId === req.params.id);
+    const target = cmsAdminRecordForId(req.params.id);
     const role = String(req.body?.role || '');
     if (!target || !['owner', 'editor', 'viewer'].includes(role)) return res.status(400).json({ error: 'ROLE_INVALID' });
-    if (target.role === 'owner' && role !== 'owner' && store.authAdmins.filter((admin) => admin.role === 'owner').length < 2) {
+    if (target.role === 'owner' && role !== 'owner' && store.authAdmins.filter((admin) => admin.role === 'owner' && !admin.banned).length < 2) {
       return res.status(409).json({ error: 'LAST_OWNER' });
     }
-    const result = await auth.api.setRole({
-      body: { userId: req.params.id, role: authRoleForCmsRole(role) },
+    const result = target.userId ? await auth.api.setRole({
+      body: { userId: target.userId, role: authRoleForCmsRole(role) },
       headers: fromNodeHeaders(req.headers)
-    });
+    }) : null;
     target.role = role;
-    syncBetterAuthRole(req.params.id, role);
-    audit('auth.user.role', req.cmsUser, { userId: req.params.id, role });
+    target.updatedAt = now();
+    if (target.userId) syncBetterAuthRole(target.userId, role);
+    audit('auth.user.role', req.cmsUser, { userId: target.userId || target.id, role });
     writeStore();
+    if (!target.userId) return res.json({ user: { id: target.id, name: target.name || target.email, email: target.email, role, authRole: 'pending', pending: true, provider: 'google', banned: Boolean(target.banned), createdAt: target.createdAt, updatedAt: target.updatedAt } });
     const user = result?.user || result;
     res.json({ user: userPayload({ ...user, role: authRoleForCmsRole(role) }) });
   } catch (error) {
@@ -768,15 +820,19 @@ app.patch('/api/cms/users/:id/role', requireAuth, requireOwner, requireCsrf, asy
 
 app.post('/api/cms/users/:id/status', requireAuth, requireOwner, requireCsrf, async (req, res, next) => {
   try {
-    const target = store.authAdmins.find((admin) => admin.userId === req.params.id);
+    const target = cmsAdminRecordForId(req.params.id);
     const disabled = Boolean(req.body?.disabled);
     if (!target) return res.status(404).json({ error: 'USER_NOT_FOUND' });
     if (target.role === 'owner') return res.status(409).json({ error: 'OWNER_CANNOT_BE_DISABLED' });
-    const result = disabled
-      ? await auth.api.banUser({ body: { userId: req.params.id, banReason: 'Acceso revocado desde el CMS' }, headers: fromNodeHeaders(req.headers) })
-      : await auth.api.unbanUser({ body: { userId: req.params.id }, headers: fromNodeHeaders(req.headers) });
-    audit(disabled ? 'auth.user.disable' : 'auth.user.enable', req.cmsUser, { userId: req.params.id });
+    const result = target.userId ? (disabled
+      ? await auth.api.banUser({ body: { userId: target.userId, banReason: 'Acceso revocado desde el CMS' }, headers: fromNodeHeaders(req.headers) })
+      : await auth.api.unbanUser({ body: { userId: target.userId }, headers: fromNodeHeaders(req.headers) })) : null;
+    target.banned = disabled;
+    target.banReason = disabled ? 'Acceso revocado desde el CMS' : '';
+    target.updatedAt = now();
+    audit(disabled ? 'auth.user.disable' : 'auth.user.enable', req.cmsUser, { userId: target.userId || target.id });
     writeStore();
+    if (!target.userId) return res.json({ user: { id: target.id, name: target.name || target.email, email: target.email, role: target.role, authRole: 'pending', pending: true, provider: 'google', banned: target.banned, createdAt: target.createdAt, updatedAt: target.updatedAt } });
     const user = result?.user || result;
     res.json({ user: userPayload({ ...user, role: authRoleForCmsRole(target.role) }) });
   } catch (error) {
