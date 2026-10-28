@@ -6,9 +6,12 @@ const state = {
   selectedPage: null,
   fields: [],
   media: [],
+  mediaFolders: [],
+  mediaFolder: '',
   mediaTarget: null,
   settings: null,
   users: [],
+  googleEnabled: false,
   setup: false
 };
 
@@ -69,6 +72,18 @@ async function authRequest(url, body) {
   return payload;
 }
 
+async function signInWithGoogle() {
+  if (!state.googleEnabled) return;
+  try {
+    const payload = await authRequest('/api/auth/sign-in/social', { provider: 'google', callbackURL: '/admin/' });
+    if (payload?.url) window.location.assign(payload.url);
+    else window.location.reload();
+  } catch (error) {
+    $('#auth-error').textContent = `No se pudo iniciar con Google: ${error.message}`;
+    $('#auth-error').hidden = false;
+  }
+}
+
 function showAuth(setup) {
   state.setup = setup;
   $('#app').dataset.state = 'auth';
@@ -86,6 +101,8 @@ function showAuth(setup) {
     $('#auth-email').value = 'ia@satma.mx';
     $('#auth-email').placeholder = 'ia@satma.mx';
   }
+  $('#google-login').hidden = !state.googleEnabled;
+  $('#auth-divider').hidden = !state.googleEnabled;
   $('#auth-error').hidden = true;
 }
 
@@ -272,13 +289,22 @@ function renderMedia() {
   const grid = $('#media-grid');
   if (!state.media.length) { grid.innerHTML = '<div class="empty-state"><strong>Biblioteca vacía</strong><span>Sube una imagen, video, audio o PDF para empezar.</span></div>'; return; }
   const canEdit = ['owner', 'editor'].includes(state.user?.role);
-  grid.innerHTML = state.media.map((item) => `<article class="media-card"><div class="media-preview">${item.mime.startsWith('image/') ? `<img src="${escapeHtml(item.url)}" alt="" loading="lazy" />` : item.mime.startsWith('video/') ? `<video src="${escapeHtml(item.url)}" controls preload="metadata"></video>` : `<span>${escapeHtml(item.mime.split('/')[0].toUpperCase())}</span>`}</div><div class="media-info"><strong title="${escapeHtml(item.originalName)}">${escapeHtml(item.originalName)}</strong><small>${escapeHtml(item.mime)} · ${Math.round(item.size / 1024)} KB</small><div class="media-actions">${canEdit ? `<button class="mini-button use-media" data-media-id="${item.id}" type="button">Usar en campo</button>` : ''}<button class="mini-button copy-media" data-media-url="${item.url}" type="button">Copiar ruta</button></div></div></article>`).join('');
+  grid.innerHTML = state.media.map((item) => `<article class="media-card"><div class="media-preview">${item.mime.startsWith('image/') ? `<img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.alt || '')}" loading="lazy" />` : item.mime.startsWith('video/') ? `<video src="${escapeHtml(item.url)}" controls preload="metadata"></video>` : `<span>${escapeHtml(item.mime.split('/')[0].toUpperCase())}</span>`}</div><div class="media-info"><div class="media-kicker">${escapeHtml(item.folder || 'General')}</div><strong title="${escapeHtml(item.originalName)}">${escapeHtml(item.originalName)}</strong><small>${escapeHtml(item.mime)} · ${Math.round(item.size / 1024)} KB</small>${canEdit ? `<input class="media-alt" data-media-id="${item.id}" value="${escapeHtml(item.alt || '')}" placeholder="Texto alternativo" aria-label="Texto alternativo" /><input class="media-caption" data-media-id="${item.id}" value="${escapeHtml(item.caption || '')}" placeholder="Descripción breve" aria-label="Descripción breve" />` : item.caption ? `<p class="media-caption-readonly">${escapeHtml(item.caption)}</p>` : ''}<div class="media-actions">${canEdit ? `<button class="mini-button use-media" data-media-id="${item.id}" type="button">Usar en campo</button><button class="mini-button save-media-meta" data-media-id="${item.id}" type="button">Guardar ficha</button>` : ''}<button class="mini-button copy-media" data-media-url="${item.url}" type="button">Copiar ruta</button></div></div></article>`).join('');
+  $('#media-folders').innerHTML = `<button class="folder-item ${!state.mediaFolder ? 'is-active' : ''}" data-media-folder="">Todos los activos <span>${state.mediaFolders.reduce((sum, folder) => sum + folder.count, 0)}</span></button>` + state.mediaFolders.map((folder) => `<button class="folder-item ${state.mediaFolder === folder.name ? 'is-active' : ''}" data-media-folder="${escapeHtml(folder.name)}">${escapeHtml(folder.name)} <span>${folder.count}</span></button>`).join('');
+  $$('.folder-item').forEach((button) => button.addEventListener('click', () => { state.mediaFolder = button.dataset.mediaFolder; loadMedia(); }));
   $$('.use-media').forEach((button) => button.addEventListener('click', () => useMedia(button.dataset.mediaId)));
   $$('.copy-media').forEach((button) => button.addEventListener('click', async () => { await navigator.clipboard?.writeText(button.dataset.mediaUrl); notify('Ruta copiada.'); }));
+  $$('.save-media-meta').forEach((button) => button.addEventListener('click', () => saveMediaMeta(button.dataset.mediaId)));
 }
 
 async function loadMedia() {
-  try { const response = await api('/api/cms/media'); state.media = response.media; renderMedia(); } catch (error) { notify('No se pudo cargar la biblioteca.', 'error'); }
+  try { const search = $('#media-search')?.value || ''; const params = new URLSearchParams({ ...(state.mediaFolder ? { folder: state.mediaFolder } : {}), ...(search ? { search } : {}) }); const response = await api(`/api/cms/media?${params}`); state.media = response.media; state.mediaFolders = response.folders || []; renderMedia(); } catch (error) { notify('No se pudo cargar la biblioteca.', 'error'); }
+}
+
+async function saveMediaMeta(id) {
+  const alt = $(`.media-alt[data-media-id="${CSS.escape(id)}"]`)?.value || '';
+  const caption = $(`.media-caption[data-media-id="${CSS.escape(id)}"]`)?.value || '';
+  try { await api(`/api/cms/media/${encodeURIComponent(id)}`, { method: 'PATCH', body: { alt, caption } }); notify('Ficha del activo actualizada.'); await loadMedia(); } catch (error) { notify(`No se actualizó el activo: ${error.message}`, 'error'); }
 }
 
 async function useMedia(id) {
@@ -393,7 +419,7 @@ async function updateUserStatus(id, disabled) {
 }
 
 async function uploadMedia(file) {
-  const form = new FormData(); form.append('file', file);
+  const form = new FormData(); form.append('file', file); form.append('folder', $('#media-upload-folder')?.value || 'General'); form.append('alt', $('#media-upload-alt')?.value || ''); form.append('caption', $('#media-upload-caption')?.value || '');
   try { await api('/api/cms/media', { method: 'POST', body: form }); notify('Archivo guardado en la biblioteca.'); await loadMedia(); } catch (error) { notify(`No se pudo subir: ${error.message}`, 'error'); }
 }
 
@@ -408,6 +434,7 @@ async function boot() {
       state.user = session.user; state.csrf = session.csrf; showApp();
     } catch (error) { $('#auth-error').textContent = error.message === 'INVALID_EMAIL_OR_PASSWORD' || error.message === 'CREDENTIALS_INVALID' ? 'Email o contraseña incorrectos.' : `No se pudo completar el acceso: ${error.message}`; $('#auth-error').hidden = false; }
   });
+  $('#google-login').addEventListener('click', signInWithGoogle);
   $('#logout-button').addEventListener('click', async () => { try { await api('/api/auth/sign-out', { method: 'POST', body: {} }); } finally { state.user = null; state.csrf = null; showAuth(false); } });
   $('#publish-button').addEventListener('click', publish);
   $('#save-settings').addEventListener('click', saveSettings);
@@ -424,8 +451,11 @@ async function boot() {
   });
   $('#refresh-inventory').addEventListener('click', async () => { try { await api('/api/cms/inventory/refresh', { method: 'POST', body: {} }); notify('Inventario actualizado.'); state.selectedPage = null; await loadPages(); } catch (error) { notify(`No se actualizó el inventario: ${error.message}`, 'error'); } });
   $('#media-upload').addEventListener('change', (event) => { const file = event.target.files?.[0]; if (file) uploadMedia(file); event.target.value = ''; });
+  $('#media-search').addEventListener('input', () => loadMedia());
   document.addEventListener('click', (event) => { const target = event.target.closest('[data-view]'); if (target) navigate(target.dataset.view); });
   try {
+    const authOptions = await fetch('/api/cms/auth-options', { credentials: 'include' }).then((response) => response.ok ? response.json() : ({}));
+    state.googleEnabled = Boolean(authOptions.google);
     const me = await api('/api/cms/auth-state');
     if (!me.authenticated) { showAuth(me.setupRequired); return; }
     state.user = me.user; state.csrf = me.csrf; showApp();

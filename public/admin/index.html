@@ -20,6 +20,8 @@
             <label>Contraseña<input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="12" required placeholder="Mínimo 12 caracteres" /></label>
             <button id="auth-submit" class="button button-primary" type="submit">Entrar</button>
           </form>
+          <div id="auth-divider" class="auth-divider" hidden><span>o</span></div>
+          <button id="google-login" class="button button-google" type="button" hidden><span class="google-mark" aria-hidden="true">G</span>Continuar con Google</button>
           <p id="auth-error" class="form-error" role="alert" hidden></p>
         </div>
       </section>
@@ -30,13 +32,16 @@
           <div><strong>Expresión Jurídica</strong><span>Content system</span></div>
         </div>
         <nav class="nav-stack" aria-label="Navegación del CMS">
-          <button class="nav-item is-active" data-view="dashboard"><span class="nav-glyph">⌂</span>Resumen</button>
+          <button class="nav-item is-active" data-view="dashboard"><span class="nav-glyph">⌘</span>Resumen</button>
+          <span class="nav-section-title"><span>Contenido del sitio</span><b>⌄</b></span>
           <button class="nav-item" data-view="pages"><span class="nav-glyph">▤</span>Páginas</button>
-          <button class="nav-item" data-view="media"><span class="nav-glyph">◈</span>Biblioteca</button>
-          <button class="nav-item" data-view="revisions"><span class="nav-glyph">↺</span>Versiones</button>
-          <button class="nav-item" data-view="activity"><span class="nav-glyph">⌁</span>Actividad</button>
-          <button class="nav-item" data-view="settings" data-owner-only><span class="nav-glyph">⚙</span>Ajustes</button>
-          <button class="nav-item" data-view="users" data-owner-only><span class="nav-glyph">◎</span>Usuarios</button>
+          <button class="nav-item" data-view="media"><span class="nav-glyph">▧</span>App Storage</button>
+          <button class="nav-item" data-view="revisions"><span class="nav-glyph">◷</span>Versiones</button>
+          <span class="nav-section-title"><span>Registros recibidos</span><b>⌄</b></span>
+          <button class="nav-item" data-view="activity"><span class="nav-glyph">▱</span>Actividad</button>
+          <span class="nav-section-title"><span>Configuración</span><b>⌄</b></span>
+          <button class="nav-item" data-view="settings" data-owner-only><span class="nav-glyph">⌘</span>SEO, Analytics y privacidad</button>
+          <button class="nav-item" data-view="users" data-owner-only><span class="nav-glyph">♙</span>Usuarios y accesos</button>
         </nav>
         <div class="sidebar-note">
           <span class="status-dot"></span>
@@ -69,8 +74,10 @@
         </section>
 
         <section id="media-view" class="content-view" hidden>
-          <div class="view-heading"><div><p class="eyebrow">Activos persistentes</p><h1>Biblioteca multimedia</h1><p>Sube archivos una vez y reutilízalos en cualquier campo de imagen, video, audio o documento.</p></div><label class="button button-primary upload-button">Subir archivo<input id="media-upload" type="file" accept="image/*,video/*,audio/*,application/pdf" hidden /></label></div>
-          <div id="media-grid" class="media-grid"></div>
+          <div class="view-heading"><div><p class="eyebrow">App Storage · activos del sitio</p><h1>Biblioteca multimedia</h1><p>Organiza imágenes, videos, audios y documentos por carpetas, conserva metadatos y reutiliza cada activo en cualquier página.</p></div><div class="storage-actions"><label class="button button-primary upload-button">Subir archivo<input id="media-upload" type="file" accept="image/*,video/*,audio/*,application/pdf" hidden /></label></div></div>
+          <div class="storage-upload panel"><div class="storage-upload-head"><div><strong>Nuevo activo</strong><span>Completa la ficha antes de subirlo.</span></div><span class="storage-status">Persistente</span></div><div class="storage-upload-fields"><input id="media-upload-folder" placeholder="Carpeta · General" aria-label="Carpeta del nuevo activo" /><input id="media-upload-alt" placeholder="Texto alternativo" aria-label="Texto alternativo del nuevo activo" /><input id="media-upload-caption" placeholder="Descripción breve" aria-label="Descripción del nuevo activo" /></div></div>
+          <div class="storage-toolbar"><div class="storage-search"><span>⌕</span><input id="media-search" placeholder="Buscar activos, descripciones o texto alternativo…" /></div><span class="storage-hint">Las carpetas se crean al guardar un activo.</span></div>
+          <div class="storage-layout"><aside id="media-folders" class="folder-rail panel"></aside><div id="media-grid" class="media-grid"></div></div>
         </section>
 
         <section id="revisions-view" class="content-view" hidden>

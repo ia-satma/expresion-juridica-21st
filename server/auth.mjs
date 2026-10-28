@@ -10,6 +10,9 @@ const ROOT = process.cwd();
 const DATA_DIR = path.join(ROOT, 'data');
 const AUTH_DB_FILE = path.join(DATA_DIR, 'auth.sqlite');
 const SECRET_FILE = path.join(DATA_DIR, 'better-auth.secret');
+const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+const GOOGLE_CLIENT_SECRET = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
+export const googleAuthEnabled = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 function authSecret() {
@@ -30,6 +33,23 @@ authDatabase.pragma('foreign_keys = ON');
 
 const baseUrl = process.env.BETTER_AUTH_URL || process.env.REPLIT_DEPLOYMENT_URL || `http://localhost:${process.env.PORT || 3000}`;
 const trustedOrigins = [baseUrl, 'https://expresion-juridica-21-st.replit.app', process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null, process.env.REPLIT_DEPLOYMENT_URL].filter(Boolean);
+const googleAllowedDomain = String(process.env.CMS_GOOGLE_ALLOWED_DOMAIN || 'satma.mx').trim().toLowerCase().replace(/^@/, '');
+
+function allowedGoogleEmail(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized || !normalized.includes('@')) return false;
+  if (normalized === String(process.env.CMS_OWNER_EMAIL || 'ia@satma.mx').trim().toLowerCase()) return true;
+  return googleAllowedDomain && normalized.endsWith(`@${googleAllowedDomain}`);
+}
+
+const socialProviders = googleAuthEnabled ? {
+  google: {
+    clientId: GOOGLE_CLIENT_ID,
+    clientSecret: GOOGLE_CLIENT_SECRET,
+    requireEmailVerification: true,
+    prompt: 'select_account'
+  }
+} : undefined;
 
 export const auth = betterAuth({
   database: authDatabase,
@@ -42,6 +62,23 @@ export const auth = betterAuth({
     minPasswordLength: 12,
     autoSignIn: true,
     requireEmailVerification: false
+  },
+  ...(socialProviders ? { socialProviders } : {}),
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ['google', 'email-password'],
+      allowDifferentEmails: false
+    }
+  },
+  user: {
+    validateUserInfo: ({ user, source }) => {
+      if (source.method !== 'oauth' || source.oauth?.providerId !== 'google') return;
+      if (!allowedGoogleEmail(user.email)) return {
+        error: 'GOOGLE_DOMAIN_NOT_ALLOWED',
+        errorDescription: `Sólo se permiten cuentas de Google de ${googleAllowedDomain}.`
+      };
+    }
   },
   session: {
     expiresIn: 60 * 60 * 8,

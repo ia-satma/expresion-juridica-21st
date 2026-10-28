@@ -5,7 +5,7 @@ import express from 'express';
 import multer from 'multer';
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
 import { buildInventory, fileForRoute, inventoryHtml, routeFromFile, SITE_DIR } from './inventory.mjs';
-import { auth, authDatabase, migrateAuthDatabase } from './auth.mjs';
+import { auth, authDatabase, googleAuthEnabled, migrateAuthDatabase } from './auth.mjs';
 
 const ROOT = process.cwd();
 const PORT = Number(process.env.PORT || 3000);
@@ -14,6 +14,8 @@ const MEDIA_DIR = path.join(ROOT, 'storage', 'media');
 const ADMIN_DIR = path.join(ROOT, 'public', 'admin');
 const STORE_FILE = path.join(DATA_DIR, 'cms.json');
 const OWNER_EMAIL = String(process.env.CMS_OWNER_EMAIL || 'ia@satma.mx').trim().toLowerCase();
+const GOOGLE_ALLOWED_DOMAIN = String(process.env.CMS_GOOGLE_ALLOWED_DOMAIN || 'satma.mx').trim().toLowerCase().replace(/^@/, '');
+const GOOGLE_DEFAULT_ROLE = ['editor', 'viewer'].includes(String(process.env.CMS_GOOGLE_DEFAULT_ROLE || '').toLowerCase()) ? String(process.env.CMS_GOOGLE_DEFAULT_ROLE).toLowerCase() : 'viewer';
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(MEDIA_DIR, { recursive: true });
@@ -126,6 +128,21 @@ function cmsAdminFor(session) {
 
 function authRoleForCmsRole(role) {
   return role === 'owner' ? 'admin' : 'user';
+}
+
+function googleEmailAllowed(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  return normalized === OWNER_EMAIL || (GOOGLE_ALLOWED_DOMAIN && normalized.endsWith(`@${GOOGLE_ALLOWED_DOMAIN}`));
+}
+
+function hasGoogleAccount(userId) {
+  if (!googleAuthEnabled) return false;
+  try {
+    return Boolean(authDatabase.prepare('SELECT 1 FROM account WHERE userId = ? AND providerId = ? LIMIT 1').get(userId, 'google'));
+  } catch (error) {
+    console.error('[cms-auth] no se pudo comprobar la cuenta Google', error.message);
+    return false;
+  }
 }
 
 function syncBetterAuthRole(userId, cmsRole) {
@@ -390,6 +407,11 @@ const upload = multer({
   }
 });
 
+function cleanMediaFolder(value) {
+  const folder = String(value || 'General').trim().replace(/[\\/]+/g, ' · ').replace(/[^\p{L}\p{N} .·_-]+/gu, '').slice(0, 80);
+  return folder || 'General';
+}
+
 const app = express();
 app.disable('x-powered-by');
 
@@ -406,6 +428,10 @@ app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
 app.get('/healthz', (_req, res) => res.json({ ok: true, service: 'expresion-juridica-cms', inventory: inventory.pages.length }));
 
+app.get('/api/cms/auth-options', (_req, res) => {
+  res.set('Cache-Control', 'no-store').json({ google: googleAuthEnabled, ownerEmail: OWNER_EMAIL });
+});
+
 app.get('/api/cms/auth-state', async (req, res) => {
   const session = await authSessionFor(req);
   if (!session?.user) return res.json({ authenticated: false, setupRequired: store.authAdmins.length === 0, ownerEmail: OWNER_EMAIL });
@@ -416,6 +442,13 @@ app.get('/api/cms/auth-state', async (req, res) => {
     store.authAdmins.push(admin);
     syncBetterAuthRole(session.user.id, admin.role);
     audit('auth.bootstrap', session.user);
+    writeStore();
+  }
+  if (!admin && store.authAdmins.length && hasGoogleAccount(session.user.id) && googleEmailAllowed(session.user.email)) {
+    admin = { userId: session.user.id, email: session.user.email, role: session.user.email.toLowerCase() === OWNER_EMAIL ? 'owner' : GOOGLE_DEFAULT_ROLE, provider: 'google', createdAt: now() };
+    store.authAdmins.push(admin);
+    syncBetterAuthRole(session.user.id, admin.role);
+    audit('auth.google.bootstrap', session.user, { role: admin.role, domain: GOOGLE_ALLOWED_DOMAIN });
     writeStore();
   }
   if (!admin) return res.status(403).json({ error: 'CMS_ACCESS_NOT_GRANTED' });
@@ -557,8 +590,12 @@ app.post('/api/cms/inventory/refresh', requireAuth, requireEditor, requireCsrf, 
   res.json({ ok: true, generatedAt: inventory.generatedAt, pages: inventory.pages.length, fields: inventory.fields.length });
 });
 
-app.get('/api/cms/media', requireAuth, (_req, res) => {
-  res.json({ media: store.media.filter((item) => !item.deletedAt).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))) });
+app.get('/api/cms/media', requireAuth, (req, res) => {
+  const folder = String(req.query.folder || '').trim();
+  const search = String(req.query.search || '').trim().toLowerCase();
+  const media = store.media.filter((item) => !item.deletedAt && (!folder || item.folder === folder) && (!search || `${item.originalName} ${item.caption || ''} ${item.alt || ''}`.toLowerCase().includes(search))).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  const folders = Object.entries(store.media.filter((item) => !item.deletedAt).reduce((map, item) => { const key = item.folder || 'General'; map[key] = (map[key] || 0) + 1; return map; }, {})).sort(([a], [b]) => a.localeCompare(b, 'es'));
+  res.json({ media, folders: folders.map(([name, count]) => ({ name, count })) });
 });
 
 app.post('/api/cms/media', requireAuth, requireEditor, requireCsrf, upload.single('file'), (req, res) => {
@@ -570,6 +607,9 @@ app.post('/api/cms/media', requireAuth, requireEditor, requireCsrf, upload.singl
     originalName: req.file.originalname,
     mime: req.file.mimetype,
     size: req.file.size,
+    folder: cleanMediaFolder(req.body?.folder),
+    alt: String(req.body?.alt || '').trim().slice(0, 300),
+    caption: String(req.body?.caption || '').trim().slice(0, 500),
     createdAt: now(),
     uploadedBy: req.cmsUser.email
   };
@@ -577,6 +617,17 @@ app.post('/api/cms/media', requireAuth, requireEditor, requireCsrf, upload.singl
   audit('media.upload', req.cmsUser, { mediaId: item.id, name: item.originalName, size: item.size });
   writeStore();
   res.status(201).json({ media: item });
+});
+
+app.patch('/api/cms/media/:id', requireAuth, requireEditor, requireCsrf, (req, res) => {
+  const item = store.media.find((candidate) => candidate.id === req.params.id && !candidate.deletedAt);
+  if (!item) return res.status(404).json({ error: 'MEDIA_NOT_FOUND' });
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, 'folder')) item.folder = cleanMediaFolder(req.body.folder);
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, 'alt')) item.alt = String(req.body.alt || '').trim().slice(0, 300);
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, 'caption')) item.caption = String(req.body.caption || '').trim().slice(0, 500);
+  audit('media.update', req.cmsUser, { mediaId: item.id, folder: item.folder });
+  writeStore();
+  res.json({ ok: true, media: item });
 });
 
 app.delete('/api/cms/media/:id', requireAuth, requireEditor, requireCsrf, (req, res) => {
