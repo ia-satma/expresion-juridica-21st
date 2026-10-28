@@ -473,6 +473,43 @@ function mediaMime(file) {
   return ({ '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.avif': 'image/avif', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.pdf': 'application/pdf' })[ext] || 'application/octet-stream';
 }
 
+async function importSiteMediaOnStart() {
+  if (!appStorageEnabled) return;
+  const sourceFiles = [
+    ...siteMediaFiles(SITE_DIR),
+    ...siteMediaFiles(path.join(ROOT, 'firma-cms', 'assets'), 'firma-cms/assets')
+  ];
+  const pending = sourceFiles.filter((file) => !store.media.some((item) => !item.deletedAt && item.sourcePath === file.relative));
+  if (!pending.length) return;
+  const imported = [];
+  for (const file of pending) {
+    const filename = 'site-' + file.relative.replace(/[^a-zA-Z0-9._-]+/g, '-');
+    const uploaded = await uploadStorageFile(filename, file.absolute);
+    if (!uploaded.ok) throw new Error('No se pudo cargar ' + file.relative + ': ' + uploaded.error);
+    const item = {
+      id: crypto.randomUUID(),
+      url: '/cms-media/' + encodeURIComponent(filename),
+      filename,
+      storage: 'replit-app-storage',
+      storageScope: appStorageScope,
+      originalName: path.basename(file.relative),
+      sourcePath: file.relative,
+      mime: mediaMime(file.relative),
+      size: fs.statSync(file.absolute).size,
+      folder: file.relative.startsWith('img/') ? 'Imágenes del sitio' : file.relative.startsWith('video/') ? 'Videos del sitio' : file.relative.startsWith('firma-cms/') ? 'Firmas de correo' : 'Marca',
+      alt: '',
+      caption: 'Importado del sitio · ' + file.relative,
+      createdAt: now(),
+      uploadedBy: 'system'
+    };
+    store.media.push(item);
+    imported.push(item);
+  }
+  audit('media.site-import', { email: 'system' }, { count: imported.length, scope: appStorageScope });
+  writeStore();
+  console.log('[cms-storage] importados ' + imported.length + ' medios a ' + appStorageScope);
+}
+
 const app = express();
 app.disable('x-powered-by');
 
@@ -1066,6 +1103,7 @@ app.use((error, _req, res, _next) => {
 
 async function start() {
   await migrateAuthDatabase();
+  setTimeout(() => importSiteMediaOnStart().catch((error) => console.error('[cms-storage] importación inicial falló', error.message)), 1200);
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[cms] Expresión Jurídica CMS en http://localhost:${PORT}`);
     console.log(`[cms] ${inventory.pages.length} páginas · ${inventory.fields.length} campos editables`);
