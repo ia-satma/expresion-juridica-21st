@@ -12,6 +12,10 @@ npm start
 
 Abre `http://localhost:3000/admin/`. En el primer arranque, la primera cuenta que se registra queda como propietaria del CMS. Después de crearla, los registros públicos de alta quedan bloqueados.
 
+## Actualizar Replit
+
+Después de un `git push`, abre el panel `Git` de Replit, ejecuta `Fetch` y `Pull`, y luego `Republish` para que el dominio publicado use el mismo commit. La configuración de producción debe conservar `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` y `CMS_OWNER_EMAIL` en Secrets/Configurations.
+
 ## Autenticación
 
 El login usa Better Auth con email y contraseña, sesiones persistentes en SQLite (`data/auth.sqlite`) y un secreto en `BETTER_AUTH_SECRET`. La ruta de Better Auth es `/api/auth/*`; el CMS consulta `/api/cms/auth-state` para resolver el rol editorial. En producción, define `BETTER_AUTH_SECRET` y `BETTER_AUTH_URL` en Replit Secrets.
