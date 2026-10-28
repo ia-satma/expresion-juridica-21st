@@ -1,4 +1,4 @@
-import{r as l,j as t,R as N,a as oe}from"./index-Bme9jkJF.js";import{f as Pe,u as _,i as F,c as D,M as Se,a as _e,C as Me,T as Ee,B as Oe,e as z,I as Te,g as re,b as De,d as ke}from"./text-reveal-D_IwV1UY.js";import{P as $e}from"./parallax-image-BMV4-hp2.js";import{D as Le}from"./diorama-1t1JVjRp.js";import{areas as S,rutas as P,ui as Ue,areaPagina as y}from"./contenido-5nehaluA.js";import"./use-motion-value-DVRvGmR5.js";import"./use-reduced-motion-Bg2Qj78H.js";import"./use-scroll-BYYm1bxh.js";/**
+import{r as l,j as t,R as N,a as oe}from"./index-Bme9jkJF-v2.js";import{f as Pe,u as _,i as F,c as D,M as Se,a as _e,C as Me,T as Ee,B as Oe,e as z,I as Te,g as re,b as De,d as ke}from"./text-reveal-D_IwV1UY-v2.js";import{P as $e}from"./parallax-image-BMV4-hp2.js";import{D as Le}from"./diorama-1t1JVjRp.js";import{areas as S,rutas as P,ui as Ue,areaPagina as y}from"./contenido-5nehaluA-v2.js";import"./use-motion-value-DVRvGmR5.js";import"./use-reduced-motion-Bg2Qj78H.js";import"./use-scroll-BYYm1bxh.js";/**
  * @license lucide-react v0.468.0 - ISC
  *
  * This source code is licensed under the ISC license.

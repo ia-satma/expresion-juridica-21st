@@ -14,7 +14,6 @@ const state = {
   settings: null,
   users: [],
   submissions: [],
-  googleEnabled: false,
   setup: false
 };
 
@@ -53,6 +52,9 @@ async function api(url, options = {}) {
   }
   if (response.status === 204) return null;
   const payload = await response.json().catch(() => ({}));
+  if (response.status === 403 && payload.error === 'PASSWORD_CHANGE_REQUIRED') {
+    showPasswordChange();
+  }
   if (!response.ok) {
     const error = new Error(payload.error || `HTTP_${response.status}`);
     error.code = payload.error;
@@ -75,18 +77,6 @@ async function authRequest(url, body) {
   return payload;
 }
 
-async function signInWithGoogle() {
-  if (!state.googleEnabled) return;
-  try {
-    const payload = await authRequest('/api/auth/sign-in/social', { provider: 'google', callbackURL: '/admin/' });
-    if (payload?.url) window.location.assign(payload.url);
-    else window.location.reload();
-  } catch (error) {
-    $('#auth-error').textContent = `No se pudo iniciar con Google: ${error.message}`;
-    $('#auth-error').hidden = false;
-  }
-}
-
 function showAuth(setup) {
   state.setup = setup;
   $('#app').dataset.state = 'auth';
@@ -101,14 +91,27 @@ function showAuth(setup) {
   $('#auth-email').readOnly = false;
   $('#auth-email').value = '';
   $('#auth-email').placeholder = 'tu@email.com';
-  $('#google-login').hidden = !state.googleEnabled;
-  $('#auth-divider').hidden = !state.googleEnabled;
+  $('#password-change-view').hidden = true;
   $('#auth-error').hidden = true;
+}
+
+function showPasswordChange() {
+  $('#app').dataset.state = 'password-change';
+  $('#auth-view').hidden = true;
+  $('#password-change-view').hidden = false;
+  $('#sidebar').hidden = true;
+  $('#main-view').hidden = true;
+  $('#password-change-email').textContent = state.user?.email || '';
+  $('#password-current').value = '';
+  $('#password-new').value = '';
+  $('#password-confirm').value = '';
+  $('#password-change-error').hidden = true;
 }
 
 function showApp() {
   $('#app').dataset.state = 'ready';
   $('#auth-view').hidden = true;
+  $('#password-change-view').hidden = true;
   $('#sidebar').hidden = false;
   $('#main-view').hidden = false;
   $$('[data-owner-only]').forEach((element) => { element.hidden = state.user?.role !== 'owner'; });
@@ -481,7 +484,7 @@ function renderUsers() {
   if (!state.users.length) { list.innerHTML = '<div class="empty-state"><span>No hay usuarios registrados.</span></div>'; return; }
   const owners = state.users.filter((candidate) => candidate.role === 'owner' && !candidate.banned).length;
   list.innerHTML = state.users.map((user) => {
-    const access = user.pending ? 'Google · invitación pendiente' : user.provider === 'google' ? 'Google' : 'Correo y contraseña';
+    const access = user.mustChangePassword ? 'Cambio de contraseña pendiente' : 'Correo y contraseña';
     return `<div class="user-row"><div class="user-identity"><strong>${escapeHtml(user.name || user.email)}</strong><small>${escapeHtml(user.email)} · ${escapeHtml(access)} · alta ${escapeHtml(formatDate(user.createdAt))}</small></div><div class="user-controls"><select class="user-role" data-user-id="${escapeHtml(user.id)}" ${user.role === 'owner' && owners === 1 ? 'data-last-owner="true"' : ''}><option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Propietario</option><option value="editor" ${user.role === 'editor' ? 'selected' : ''}>Editor</option><option value="viewer" ${user.role === 'viewer' ? 'selected' : ''}>Visualizador</option></select><button type="button" class="mini-button user-status" data-user-id="${escapeHtml(user.id)}" data-disabled="${user.banned ? 'false' : 'true'}" ${user.role === 'owner' ? 'disabled' : ''}>${user.banned ? 'Activar' : 'Revocar'}</button></div></div>`;
   }).join('');
   $$('.user-role', list).forEach((select) => select.addEventListener('change', () => updateUserRole(select.dataset.userId, select.value, select)));
@@ -514,10 +517,29 @@ async function boot() {
     try {
       await authRequest(state.setup ? '/api/auth/sign-up/email' : '/api/auth/sign-in/email', { ...body, ...(state.setup ? { name: 'Administrador del CMS' } : {}) });
       const session = await api('/api/cms/auth-state');
-      state.user = session.user; state.csrf = session.csrf; showApp();
+      state.user = session.user; state.csrf = session.csrf;
+      if (session.user.mustChangePassword) showPasswordChange();
+      else showApp();
     } catch (error) { $('#auth-error').textContent = error.message === 'INVALID_EMAIL_OR_PASSWORD' || error.message === 'CREDENTIALS_INVALID' ? 'Email o contraseña incorrectos.' : `No se pudo completar el acceso: ${error.message}`; $('#auth-error').hidden = false; }
   });
-  $('#google-login').addEventListener('click', signInWithGoogle);
+  $('#password-change-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const nextPassword = $('#password-new').value;
+    if (nextPassword !== $('#password-confirm').value) {
+      $('#password-change-error').textContent = 'Las contraseñas nuevas no coinciden.';
+      $('#password-change-error').hidden = false;
+      return;
+    }
+    try {
+      await api('/api/cms/auth/change-password', { method: 'POST', body: { currentPassword: $('#password-current').value, newPassword: nextPassword } });
+      state.user.mustChangePassword = false;
+      notify('Contraseña actualizada.');
+      showApp();
+    } catch (error) {
+      $('#password-change-error').textContent = error.code === 'PASSWORD_TOO_SHORT' ? 'La contraseña debe tener mínimo 8 caracteres.' : 'No se pudo actualizar la contraseña actual.';
+      $('#password-change-error').hidden = false;
+    }
+  });
   $('#logout-button').addEventListener('click', async () => { try { await api('/api/auth/sign-out', { method: 'POST', body: {} }); } finally { state.user = null; state.csrf = null; showAuth(false); } });
   $('#publish-button').addEventListener('click', publish);
   $('#home-publish').addEventListener('click', publish);
@@ -527,21 +549,20 @@ async function boot() {
   $('#save-settings').addEventListener('click', saveSettings);
   $('#settings-form').addEventListener('submit', (event) => { event.preventDefault(); saveSettings(); });
   $('#refresh-users').addEventListener('click', loadUsers);
-  $('#user-auth-method').addEventListener('change', () => {
-    const google = $('#user-auth-method').value === 'google';
-    $('#user-password-field').hidden = google;
-    $('#user-password').required = !google;
-    $('#user-google-help').hidden = !google;
+  $('#copy-temporary-password').addEventListener('click', async () => {
+    const password = $('#temporary-password').textContent;
+    try { await navigator.clipboard.writeText(password); notify('Contraseña temporal copiada.'); } catch { notify('No se pudo copiar automáticamente.', 'error'); }
   });
   $('#submission-status-filter').addEventListener('change', loadSubmissions);
   $('#user-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     try {
-      const authMethod = $('#user-auth-method').value;
-      await api('/api/cms/users', { method: 'POST', body: { name: $('#user-name').value, email: $('#user-email').value, authMethod, password: authMethod === 'google' ? undefined : $('#user-password').value, role: $('#user-role').value } });
+      const response = await api('/api/cms/users', { method: 'POST', body: { name: $('#user-name').value, email: $('#user-email').value, role: $('#user-role').value } });
       event.target.reset();
-      $('#user-auth-method').dispatchEvent(new Event('change'));
-      notify('Usuario creado.');
+      $('#temporary-user-email').textContent = response.user.email;
+      $('#temporary-password').textContent = response.temporaryPassword;
+      $('#temporary-credentials').hidden = false;
+      notify('Usuario creado. Comparte la contraseña temporal de forma segura.');
       await loadUsers();
     } catch (error) { notify(`No se creó el usuario: ${error.message}`, 'error'); }
   });
@@ -550,11 +571,11 @@ async function boot() {
   $('#media-search').addEventListener('input', () => loadMedia());
   document.addEventListener('click', (event) => { const target = event.target.closest('[data-view]'); if (target) navigate(target.dataset.view); });
   try {
-    const authOptions = await fetch('/api/cms/auth-options', { credentials: 'include' }).then((response) => response.ok ? response.json() : ({}));
-    state.googleEnabled = Boolean(authOptions.google);
     const me = await api('/api/cms/auth-state');
     if (!me.authenticated) { showAuth(me.setupRequired); return; }
-    state.user = me.user; state.csrf = me.csrf; showApp();
+    state.user = me.user; state.csrf = me.csrf;
+    if (me.user.mustChangePassword) showPasswordChange();
+    else showApp();
   } catch (error) {
     if (error.code === 'OWNER_EMAIL_REQUIRED') {
       showAuth(true);

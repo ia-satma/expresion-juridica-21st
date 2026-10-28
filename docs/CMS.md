@@ -22,7 +22,7 @@ El login usa Better Auth con email y contraseña, sesiones persistentes en SQLit
 
 El primer registro de `ia@satma.mx` se convierte en `owner` (puedes cambiarlo con `CMS_OWNER_EMAIL`). Desde `Ajustes → Usuarios` el propietario puede crear cuentas y asignar `owner`, `editor` o `viewer`; el plugin Admin de Better Auth conserva el rol de autenticación, las sesiones y el estado bloqueado. El servidor impide editar, publicar, subir medios o modificar configuración sin el rol correspondiente.
 
-El CMS también admite Google OAuth. Configura `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` en Replit Secrets y registra estas URI de redirección en Google Cloud: `https://expresion-juridica-21-st.replit.app/api/auth/callback/google` y `http://localhost:3000/api/auth/callback/google`. `ia@satma.mx` siempre queda como propietaria. Las cuentas del dominio `CMS_GOOGLE_ALLOWED_DOMAIN` se aprovisionan automáticamente con `CMS_GOOGLE_DEFAULT_ROLE` (por defecto, `viewer`); para un cliente de otro dominio, el propietario debe abrir `Usuarios y accesos`, elegir `Google · cualquier dominio`, capturar el correo exacto y asignar `viewer` o `editor`. El cliente sólo podrá entrar con esa cuenta Google invitada.
+El CMS utiliza exclusivamente correo y contraseña. El propietario crea cada usuario desde `Usuarios y accesos`; el sistema genera una contraseña temporal aleatoria, la muestra una sola vez al propietario y obliga al usuario a cambiarla por una contraseña propia de mínimo 8 caracteres en su primer acceso.
 
 ## Contenido
 

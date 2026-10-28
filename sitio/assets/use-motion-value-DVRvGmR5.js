@@ -1,1 +1,1 @@
-import{u as a,r as t,M as u}from"./index-Bme9jkJF.js";import{x as r}from"./text-reveal-D_IwV1UY.js";function i(o){const e=a(()=>r(o)),{isStatic:s}=t.useContext(u);if(s){const[,n]=t.useState(o);t.useEffect(()=>e.on("change",n),[])}return e}export{i as u};
+import{u as a,r as t,M as u}from"./index-Bme9jkJF-v2.js";import{x as r}from"./text-reveal-D_IwV1UY-v2.js";function i(o){const e=a(()=>r(o)),{isStatic:s}=t.useContext(u);if(s){const[,n]=t.useState(o);t.useEffect(()=>e.on("change",n),[])}return e}export{i as u};

@@ -20,9 +20,24 @@
             <label>Contraseña<input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="8" required placeholder="Mínimo 8 caracteres" /></label>
             <button id="auth-submit" class="button button-primary" type="submit">Entrar</button>
           </form>
-          <div id="auth-divider" class="auth-divider" hidden><span>o</span></div>
-          <button id="google-login" class="button button-google" type="button" hidden><span class="google-mark" aria-hidden="true">G</span>Continuar con Google</button>
           <p id="auth-error" class="form-error" role="alert" hidden></p>
+        </div>
+      </section>
+
+      <section id="password-change-view" class="auth-view" hidden>
+        <div class="auth-frame">
+          <div class="auth-mark" aria-hidden="true">EJ</div>
+          <p class="eyebrow">Seguridad de la cuenta</p>
+          <h1>Cambia tu contraseña</h1>
+          <p class="auth-copy">La contraseña temporal sólo sirve para el primer acceso. Define una nueva de mínimo 8 caracteres para continuar.</p>
+          <p class="password-change-account">Cuenta: <strong id="password-change-email"></strong></p>
+          <form id="password-change-form" class="auth-form">
+            <label>Contraseña temporal<input id="password-current" type="password" autocomplete="current-password" minlength="8" required /></label>
+            <label>Nueva contraseña<input id="password-new" type="password" autocomplete="new-password" minlength="8" required placeholder="Mínimo 8 caracteres" /></label>
+            <label>Repite la nueva contraseña<input id="password-confirm" type="password" autocomplete="new-password" minlength="8" required /></label>
+            <button class="button button-primary" type="submit">Actualizar contraseña</button>
+          </form>
+          <p id="password-change-error" class="form-error" role="alert" hidden></p>
         </div>
       </section>
 
@@ -117,7 +132,7 @@
 
         <section id="users-view" class="content-view" hidden>
           <div class="view-heading"><div><p class="eyebrow">Control de acceso</p><h1>Usuarios y roles</h1><p>Crea cuentas, asigna permisos editoriales y revoca accesos sin compartir contraseñas.</p></div></div>
-          <div class="users-layout"><form id="user-form" class="panel user-form"><div class="panel-heading"><div><p class="eyebrow">Nueva cuenta</p><h2>Invitar usuario</h2></div></div><div class="settings-fields"><label>Nombre<input id="user-name" required /></label><label>Email exacto de Google o del usuario<input id="user-email" type="email" required /></label><label>Método de acceso<select id="user-auth-method"><option value="password">Correo y contraseña</option><option value="google">Google · cualquier dominio</option></select></label><p id="user-google-help" class="settings-help" hidden>El cliente podrá entrar con Google usando exactamente este correo, aunque pertenezca a otro dominio.</p><label id="user-password-field">Contraseña temporal<input id="user-password" type="password" minlength="8" required placeholder="Mínimo 8 caracteres" /></label><label>Rol<select id="user-role"><option value="editor">Editor · puede publicar</option><option value="viewer">Visualizador · sólo lectura</option><option value="owner">Propietario · control total</option></select></label><button class="button button-primary" type="submit">Crear acceso</button></div></form><section class="panel users-panel"><div class="panel-heading"><div><p class="eyebrow">Cuentas autorizadas</p><h2>Acceso actual</h2></div><button id="refresh-users" class="text-action" type="button">Actualizar</button></div><div id="users-list" class="users-list"></div></section></div>
+          <div class="users-layout"><form id="user-form" class="panel user-form"><div class="panel-heading"><div><p class="eyebrow">Nueva cuenta</p><h2>Crear usuario</h2></div></div><div class="settings-fields"><label>Nombre<input id="user-name" required /></label><label>Correo electrónico<input id="user-email" type="email" required /></label><label>Rol<select id="user-role"><option value="editor">Editor · puede publicar</option><option value="viewer">Visualizador · sólo lectura</option><option value="owner">Propietario · control total</option></select></label><button class="button button-primary" type="submit">Generar acceso</button><div id="temporary-credentials" class="temporary-credentials" hidden><strong>Contraseña temporal</strong><p>Entrégala al usuario de forma segura. Sólo se muestra después de crear la cuenta.</p><div class="temporary-password-line"><code id="temporary-password"></code><button id="copy-temporary-password" class="mini-button" type="button">Copiar</button></div><small>Usuario: <span id="temporary-user-email"></span></small></div></div></form><section class="panel users-panel"><div class="panel-heading"><div><p class="eyebrow">Cuentas autorizadas</p><h2>Acceso actual</h2></div><button id="refresh-users" class="text-action" type="button">Actualizar</button></div><div id="users-list" class="users-list"></div></section></div>
         </section>
       </main>
     </div>
