@@ -457,15 +457,15 @@ app.post('/api/public/contact', (req, res) => {
 app.get('/healthz', (_req, res) => res.json({ ok: true, service: 'expresion-juridica-cms', inventory: inventory.pages.length }));
 
 app.get('/api/cms/auth-options', (_req, res) => {
-  res.set('Cache-Control', 'no-store').json({ google: googleAuthEnabled, ownerEmail: OWNER_EMAIL });
+  res.set('Cache-Control', 'no-store').json({ google: googleAuthEnabled });
 });
 
 app.get('/api/cms/auth-state', async (req, res) => {
   const session = await authSessionFor(req);
-  if (!session?.user) return res.json({ authenticated: false, setupRequired: store.authAdmins.length === 0, ownerEmail: OWNER_EMAIL });
+  if (!session?.user) return res.json({ authenticated: false, setupRequired: store.authAdmins.length === 0 });
   let admin = cmsAdminFor(session);
   if (!admin && store.authAdmins.length === 0) {
-    if (String(session.user.email || '').toLowerCase() !== OWNER_EMAIL) return res.status(403).json({ error: 'OWNER_EMAIL_REQUIRED', ownerEmail: OWNER_EMAIL });
+    if (String(session.user.email || '').toLowerCase() !== OWNER_EMAIL) return res.status(403).json({ error: 'OWNER_EMAIL_REQUIRED' });
     admin = { userId: session.user.id, email: session.user.email, role: 'owner', createdAt: now() };
     store.authAdmins.push(admin);
     syncBetterAuthRole(session.user.id, admin.role);
@@ -726,7 +726,7 @@ app.post('/api/cms/users', requireAuth, requireOwner, requireCsrf, async (req, r
     const name = String(req.body?.name || '').trim();
     const password = String(req.body?.password || '');
     const role = ['owner', 'editor', 'viewer'].includes(req.body?.role) ? req.body.role : 'editor';
-    if (!email || !name || password.length < 12) return res.status(400).json({ error: 'USER_FIELDS_INVALID' });
+    if (!email || !name || password.length < 8) return res.status(400).json({ error: 'USER_FIELDS_INVALID' });
     const result = await auth.api.createUser({
       body: { email, name, password, role: authRoleForCmsRole(role) },
       headers: fromNodeHeaders(req.headers)

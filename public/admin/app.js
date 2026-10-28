@@ -99,14 +99,12 @@ function showAuth(setup) {
     : 'Administra textos, enlaces, imágenes, video y metadatos del sitio público.';
   $('#auth-submit').textContent = setup ? 'Crear cuenta y entrar' : 'Entrar';
   $('#auth-password').autocomplete = setup ? 'new-password' : 'current-password';
-  $('#auth-email').readOnly = setup;
-  if (setup) {
-    $('#auth-email').value = 'ia@satma.mx';
-    $('#auth-email').placeholder = 'ia@satma.mx';
-  }
+  // Keep the login screen neutral: never expose or persist the administrator email.
+  $('#auth-email').readOnly = false;
+  $('#auth-email').value = '';
+  $('#auth-email').placeholder = 'tu@email.com';
   $('#google-login').hidden = !state.googleEnabled;
   $('#auth-divider').hidden = !state.googleEnabled;
-  $('#google-config-note').hidden = state.googleEnabled;
   $('#auth-error').hidden = true;
 }
 
@@ -550,7 +548,7 @@ async function boot() {
   } catch (error) {
     if (error.code === 'OWNER_EMAIL_REQUIRED') {
       showAuth(true);
-      $('#auth-error').textContent = `La cuenta propietaria debe usar ${error.ownerEmail || 'ia@satma.mx'}.`;
+      $('#auth-error').textContent = 'La cuenta no tiene permisos para crear el acceso inicial.';
       $('#auth-error').hidden = false;
       return;
     }

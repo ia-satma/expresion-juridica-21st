@@ -17,12 +17,11 @@
           <p id="auth-copy" class="auth-copy">Administra textos, enlaces, imágenes, video y metadatos del sitio público.</p>
           <form id="auth-form" class="auth-form">
             <label>Email<input id="auth-email" name="email" type="email" autocomplete="username" required placeholder="tu@email.com" /></label>
-            <label>Contraseña<input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="12" required placeholder="Mínimo 12 caracteres" /></label>
+            <label>Contraseña<input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="8" required placeholder="Mínimo 8 caracteres" /></label>
             <button id="auth-submit" class="button button-primary" type="submit">Entrar</button>
           </form>
           <div id="auth-divider" class="auth-divider" hidden><span>o</span></div>
           <button id="google-login" class="button button-google" type="button" hidden><span class="google-mark" aria-hidden="true">G</span>Continuar con Google</button>
-          <p id="google-config-note" class="auth-provider-note" hidden>Google se activa al configurar sus credenciales OAuth en Replit Secrets.</p>
           <p id="auth-error" class="form-error" role="alert" hidden></p>
         </div>
       </section>
@@ -118,7 +117,7 @@
 
         <section id="users-view" class="content-view" hidden>
           <div class="view-heading"><div><p class="eyebrow">Control de acceso</p><h1>Usuarios y roles</h1><p>Crea cuentas, asigna permisos editoriales y revoca accesos sin compartir contraseñas.</p></div></div>
-          <div class="users-layout"><form id="user-form" class="panel user-form"><div class="panel-heading"><div><p class="eyebrow">Nueva cuenta</p><h2>Invitar usuario</h2></div></div><div class="settings-fields"><label>Nombre<input id="user-name" required /></label><label>Email<input id="user-email" type="email" required /></label><label>Contraseña temporal<input id="user-password" type="password" minlength="12" required placeholder="Mínimo 12 caracteres" /></label><label>Rol<select id="user-role"><option value="editor">Editor · puede publicar</option><option value="viewer">Visualizador · sólo lectura</option><option value="owner">Propietario · control total</option></select></label><button class="button button-primary" type="submit">Crear usuario</button></div></form><section class="panel users-panel"><div class="panel-heading"><div><p class="eyebrow">Cuentas autorizadas</p><h2>Acceso actual</h2></div><button id="refresh-users" class="text-action" type="button">Actualizar</button></div><div id="users-list" class="users-list"></div></section></div>
+          <div class="users-layout"><form id="user-form" class="panel user-form"><div class="panel-heading"><div><p class="eyebrow">Nueva cuenta</p><h2>Invitar usuario</h2></div></div><div class="settings-fields"><label>Nombre<input id="user-name" required /></label><label>Email<input id="user-email" type="email" required /></label><label>Contraseña temporal<input id="user-password" type="password" minlength="8" required placeholder="Mínimo 8 caracteres" /></label><label>Rol<select id="user-role"><option value="editor">Editor · puede publicar</option><option value="viewer">Visualizador · sólo lectura</option><option value="owner">Propietario · control total</option></select></label><button class="button button-primary" type="submit">Crear usuario</button></div></form><section class="panel users-panel"><div class="panel-heading"><div><p class="eyebrow">Cuentas autorizadas</p><h2>Acceso actual</h2></div><button id="refresh-users" class="text-action" type="button">Actualizar</button></div><div id="users-list" class="users-list"></div></section></div>
         </section>
       </main>
     </div>

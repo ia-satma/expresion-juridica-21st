@@ -59,7 +59,7 @@ export const auth = betterAuth({
   trustedOrigins,
   emailAndPassword: {
     enabled: true,
-    minPasswordLength: 12,
+    minPasswordLength: 8,
     autoSignIn: true,
     requireEmailVerification: false
   },
