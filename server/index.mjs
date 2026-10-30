@@ -9,6 +9,7 @@ import { auth, authDatabase, migrateAuthDatabase } from './auth.mjs';
 import { DATA_DIR, DATA_SCOPE, MEDIA_DIR, STORE_FILE } from './data-paths.mjs';
 import { appStorageEnabled, appStorageScope, deleteFile as deleteStorageFile, downloadFile as downloadStorageFile, removeLocalFile, uploadFile as uploadStorageFile } from './app-storage.mjs';
 import { generatePresentation, filePathForPresentation, ensurePresentationDir } from './presentation-generator.mjs';
+import { authSecurityPolicy, checkLoginAttempt, recordLoginFailure, recordLoginSuccess } from './auth-security.mjs';
 
 const ROOT = process.cwd();
 const PORT = Number(process.env.PORT || 3000);
@@ -65,6 +66,7 @@ const defaultStore = () => ({
   media: [],
   signatures: [],
   presentations: [],
+  rolePermissions: { owner: ['*'], editor: ['content', 'media', 'signatures', 'submissions'], viewer: ['view'] },
   submissions: [],
   revisions: [],
   audit: [],
@@ -98,6 +100,7 @@ function readStore() {
         : [],
       signatures: Array.isArray(parsed.signatures) ? parsed.signatures : [],
       presentations: Array.isArray(parsed.presentations) ? parsed.presentations : [],
+      rolePermissions: normalizeRolePermissions(parsed.rolePermissions),
       settings: mergeSettings(parsed.settings)
     };
   } catch (error) {
@@ -155,6 +158,15 @@ function pageCategory(page) {
 
 function authRoleForCmsRole(role) {
   return role === 'owner' ? 'admin' : 'user';
+}
+
+const cmsPermissionCatalog = ['content', 'media', 'signatures', 'submissions', 'settings', 'users', 'view'];
+function normalizeRolePermissions(input = {}) {
+  const defaults = { owner: ['*'], editor: ['content', 'media', 'signatures', 'submissions'], viewer: ['view'] };
+  return Object.fromEntries(Object.entries(defaults).map(([role, fallback]) => {
+    const values = Array.isArray(input?.[role]) ? input[role].filter((permission) => permission === '*' || cmsPermissionCatalog.includes(permission)) : fallback;
+    return [role, role === 'owner' ? ['*'] : [...new Set(values.length ? values : fallback)]];
+  }));
 }
 
 function cmsAdminRecordForId(id) {
@@ -254,7 +266,11 @@ function normalizeSettings(input = {}) {
 
 async function authSessionFor(req) {
   try {
-    return await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+    const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+    const createdAt = Date.parse(session?.session?.createdAt || '');
+    const maxAgeMs = authSecurityPolicy.sessionHours * 60 * 60 * 1000;
+    if (Number.isFinite(createdAt) && Date.now() - createdAt >= maxAgeMs) return null;
+    return session;
   } catch (error) {
     console.error('[cms-auth] session lookup failed', error.message);
     return null;
@@ -478,6 +494,43 @@ function mediaMime(file) {
   return ({ '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.avif': 'image/avif', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.pdf': 'application/pdf' })[ext] || 'application/octet-stream';
 }
 
+async function importSiteMediaOnStart() {
+  if (!appStorageEnabled) return;
+  const sourceFiles = [
+    ...siteMediaFiles(SITE_DIR),
+    ...siteMediaFiles(path.join(ROOT, 'firma-cms', 'assets'), 'firma-cms/assets')
+  ];
+  const pending = sourceFiles.filter((file) => !store.media.some((item) => !item.deletedAt && item.sourcePath === file.relative));
+  if (!pending.length) return;
+  const imported = [];
+  for (const file of pending) {
+    const filename = 'site-' + file.relative.replace(/[^a-zA-Z0-9._-]+/g, '-');
+    const uploaded = await uploadStorageFile(filename, file.absolute);
+    if (!uploaded.ok) throw new Error('No se pudo cargar ' + file.relative + ': ' + uploaded.error);
+    const item = {
+      id: crypto.randomUUID(),
+      url: '/cms-media/' + encodeURIComponent(filename),
+      filename,
+      storage: 'replit-app-storage',
+      storageScope: appStorageScope,
+      originalName: path.basename(file.relative),
+      sourcePath: file.relative,
+      mime: mediaMime(file.relative),
+      size: fs.statSync(file.absolute).size,
+      folder: file.relative.startsWith('img/') ? 'Imágenes del sitio' : file.relative.startsWith('video/') ? 'Videos del sitio' : file.relative.startsWith('firma-cms/') ? 'Firmas de correo' : 'Marca',
+      alt: '',
+      caption: 'Importado del sitio · ' + file.relative,
+      createdAt: now(),
+      uploadedBy: 'system'
+    };
+    store.media.push(item);
+    imported.push(item);
+  }
+  audit('media.site-import', { email: 'system' }, { count: imported.length, scope: appStorageScope });
+  writeStore();
+  console.log('[cms-storage] importados ' + imported.length + ' medios a ' + appStorageScope);
+}
+
 const app = express();
 app.disable('x-powered-by');
 
@@ -487,7 +540,56 @@ app.all('/api/auth/sign-up/email', (req, res, next) => {
   if (!setupRequired()) return res.status(403).json({ error: 'SIGNUP_DISABLED' });
   return toNodeHandler(auth)(req, res, next);
 });
-app.all('/api/auth/*splat', toNodeHandler(auth));
+app.all('/api/auth/sign-out', async (req, res, next) => { const session = await authSessionFor(req); const admin = cmsAdminFor(session); if (session?.user && admin) { audit('auth.logout', session.user, { sessionId: session.session?.id || null, role: admin.role }); writeStore(); } return toNodeHandler(auth)(req, res, next); });
+
+function authClientIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function authLoginEmail(req) {
+  return String(req.body?.email || '').trim().toLowerCase();
+}
+
+async function authRequestHandler(req, res, next) {
+  const pathname = String(req.originalUrl || '').split('?')[0];
+  const isEmailLogin = req.method === 'POST' && pathname.endsWith('/sign-in/email');
+  if (!isEmailLogin) return toNodeHandler(auth)(req, res, next);
+
+  const email = authLoginEmail(req);
+  const ip = authClientIp(req);
+  const gate = checkLoginAttempt({ email, ip });
+  if (!gate.allowed) {
+    res.setHeader('Retry-After', String(gate.retryAfterSeconds));
+    audit('auth.login.blocked', null, { email: email || null, scope: gate.scope, retryAfterSeconds: gate.retryAfterSeconds });
+    writeStore();
+    return res.status(429).json({
+      error: 'LOGIN_TEMPORARILY_BLOCKED',
+      message: 'Hay demasiados intentos fallidos. Espera unos minutos e inténtalo de nuevo.',
+      retryAfterSeconds: gate.retryAfterSeconds,
+    });
+  }
+
+  res.once('finish', () => {
+    const status = Number(res.statusCode || 0);
+    if (status >= 200 && status < 300) {
+      recordLoginSuccess({ email, ip });
+      return;
+    }
+    if (![400, 401, 403, 429].includes(status)) return;
+    const result = recordLoginFailure({ email, ip });
+    audit('auth.login.failed', null, {
+      email: email || null,
+      status,
+      blocked: result.blocked,
+      retryAfterSeconds: result.retryAfterSeconds,
+    });
+    writeStore();
+  });
+  return toNodeHandler(auth)(req, res, next);
+}
+
+app.all('/api/auth/*splat', authRequestHandler);
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
@@ -535,8 +637,10 @@ app.get('/api/cms/auth-state', async (req, res) => {
   }
   if (!admin) return res.status(403).json({ error: 'CMS_ACCESS_NOT_GRANTED' });
   syncBetterAuthRole(session.user.id, admin.role);
+  const sessionId = session.session?.id;
+  if (sessionId && !store.audit.some((item) => item.action === 'auth.login' && item.detail?.sessionId === sessionId)) { audit('auth.login', session.user, { sessionId, role: admin.role }); writeStore(); }
   const csrf = setCsrfCookie(res);
-  res.json({ authenticated: true, setupRequired: false, csrf, user: { ...session.user, role: admin.role, mustChangePassword: Boolean(admin.mustChangePassword) } });
+  res.json({ authenticated: true, setupRequired: false, csrf, user: { ...session.user, role: admin.role, mustChangePassword: Boolean(admin.mustChangePassword) }, sessionExpiresAt: session.session?.expiresAt || null, sessionMaxAgeHours: authSecurityPolicy.sessionHours });
 });
 
 app.post('/api/cms/auth/change-password', requireSession, requireCsrf, async (req, res) => {
@@ -990,6 +1094,10 @@ function userPayload(user) {
   };
 }
 
+app.get('/api/cms/role-permissions', requireAuth, requireOwner, (_req, res) => { res.json({ permissions: store.rolePermissions, catalog: cmsPermissionCatalog }); });
+
+app.put('/api/cms/role-permissions', requireAuth, requireOwner, requireCsrf, (req, res) => { store.rolePermissions = normalizeRolePermissions(req.body?.permissions || {}); audit('auth.permissions.update', req.cmsUser, { roles: Object.keys(store.rolePermissions) }); writeStore(); res.json({ ok: true, permissions: store.rolePermissions }); });
+
 app.get('/api/cms/users', requireAuth, requireOwner, async (req, res, next) => {
   try {
     const result = await auth.api.listUsers({
@@ -1050,6 +1158,20 @@ app.patch('/api/cms/users/:id/role', requireAuth, requireOwner, requireCsrf, asy
   } catch (error) {
     next(error);
   }
+});
+
+app.post('/api/cms/users/:id/reset-password', requireAuth, requireOwner, requireCsrf, async (req, res, next) => {
+  try {
+    const target = cmsAdminRecordForId(req.params.id);
+    if (!target?.userId) return res.status(404).json({ error: 'USER_NOT_FOUND' });
+    const temporary = temporaryPassword();
+    await auth.api.setUserPassword({ body: { userId: target.userId, newPassword: temporary }, headers: fromNodeHeaders(req.headers) });
+    target.mustChangePassword = true;
+    target.updatedAt = now();
+    audit('auth.user.password.reset', req.cmsUser, { userId: target.userId });
+    writeStore();
+    res.json({ ok: true, temporaryPassword: temporary, userId: target.userId });
+  } catch (error) { next(error); }
 });
 
 app.post('/api/cms/users/:id/status', requireAuth, requireOwner, requireCsrf, async (req, res, next) => {
@@ -1155,6 +1277,7 @@ app.use((error, _req, res, _next) => {
 
 async function start() {
   await migrateAuthDatabase();
+  setTimeout(() => importSiteMediaOnStart().catch((error) => console.error('[cms-storage] importación inicial falló', error.message)), 1200);
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[cms] Expresión Jurídica CMS en http://localhost:${PORT}`);
     console.log(`[cms] ${inventory.pages.length} páginas · ${inventory.fields.length} campos editables`);

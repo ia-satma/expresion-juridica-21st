@@ -76,7 +76,7 @@ async function authRequest(url, body) {
     body: JSON.stringify(body)
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || payload.error || payload.code || `HTTP_${response.status}`);
+  if (!response.ok) { const error = new Error(payload.message || payload.error || payload.code || ('HTTP_' + response.status)); error.code = payload.error || payload.code || ''; error.status = response.status; error.retryAfterSeconds = payload.retryAfterSeconds || 0; throw error; }
   return payload;
 }
 
@@ -551,23 +551,89 @@ function signatureAssetBase(value) {
 
 function buildSignatureHtml(value) {
   const base = signatureAssetBase(value);
-  const phone = String(value.phone || '').replace(/[^\d+]/g, '');
-  const tel = phone ? `<a href="tel:${signatureEsc(phone)}" style="color:#141A3A;text-decoration:none;">${signatureEsc(value.phone)}</a>` : '';
-  const mail = value.email ? `<a href="mailto:${signatureEsc(value.email)}" style="color:#141A3A;text-decoration:none;">${signatureEsc(value.email)}</a>` : '';
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;border-collapse:collapse;font-family:Arial,sans-serif;background:#fff;"><tr><td width="240" style="width:240px;padding:0;vertical-align:top;"><img src="${signatureEsc(`${base}logo.png`)}" width="240" height="220" alt="Expresión Jurídica Consultores" style="display:block;border:0;width:240px;height:220px;"></td><td width="360" height="220" valign="top" style="width:360px;height:220px;padding:30px 18px 0;background:#fff url('${signatureEsc(`${base}fondo-derecha.png`)}') no-repeat right top;background-size:360px 220px;color:#141A3A;"><div style="font:italic 21px Georgia,serif;color:#B08D57;line-height:1.1;">${signatureEsc(value.name)}</div><div style="font:12px Arial,sans-serif;color:#0C112B;margin-top:4px;">${signatureEsc(value.role)}</div><div style="font:12px Arial,sans-serif;margin-top:21px;line-height:1.45;">${tel}<br>${mail}<br>${signatureEsc(value.address1)}<br>${signatureEsc(value.address2)}</div></td></tr></table>`;
+  const bg = base + 'fondo-derecha.png';
+  const logo = base + 'logo.png';
+  const PW = 2087.971, PH = 767.057, LEFT = 240, H = 220, k = 600 / PW;
+  const SERIF = "Georgia,'Times New Roman',serif";
+  const SANS = "Arial,sans-serif";
+  const lines = [
+    { key: 'name', serif: true, size: 80, x: 891.016, base: PH - 592.309, color: '#B08D57', ls: 0, ws: -0.041 },
+    { key: 'role', size: 47.0786, x: 885.185, base: PH - 514.104, color: '#0C112B', ls: 0, ws: 0 },
+    { key: 'phone', size: 43, x: 992.543, base: PH - 343.561, color: '#141A3A', ls: -0.019, ws: 0.019, href: (item) => 'tel:' + item.replace(/[^\\d+]/g, '') },
+    { key: 'email', size: 43, x: 992.543, base: PH - 238.6, color: '#141A3A', ls: -0.019, ws: 0.019, href: (item) => 'mailto:' + item.trim() },
+    { key: 'address1', size: 43, x: 992.543, base: PH - 143.4, color: '#141A3A', ls: -0.019, ws: 0.019 },
+    { key: 'address2', size: 43, x: 992.543, base: PH - 97.3, color: '#141A3A', ls: -0.019, ws: 0.019 }
+  ];
+  const round = (number) => Math.round(number * 100) / 100;
+  let y = 0;
+  let rows = '';
+  for (const line of lines) {
+    const size = line.size * k;
+    const lineHeight = line.serif ? Math.round(size * 1.25) : Math.round(size * 1.05);
+    const ascender = line.serif ? (lineHeight - 1.23 * size) / 2 + 0.97 * size : (lineHeight - size) / 2 + 0.794 * size;
+    const top = Math.round(line.base * k - ascender);
+    if (top > y) rows += '<tr><td height="' + (top - y) + '" style="height:' + (top - y) + 'px;line-height:' + (top - y) + 'px;font-size:1px;mso-line-height-rule:exactly;">&nbsp;</td></tr>';
+    const style = 'padding:0 0 0 ' + round(line.x * k - LEFT) + 'px;height:' + lineHeight + 'px;line-height:' + lineHeight + 'px;mso-line-height-rule:exactly;font-family:' + (line.serif ? SERIF : SANS) + ';font-size:' + round(size) + 'px;' + (line.serif ? 'font-style:italic;' : '') + 'font-weight:400;color:' + line.color + ';white-space:nowrap;' + (line.ls ? 'letter-spacing:' + line.ls + 'em;' : '') + (line.ws ? 'word-spacing:' + line.ws + 'em;' : '');
+    const raw = String(value[line.key] || '');
+    const text = signatureEsc(raw);
+    const inner = line.href && raw ? '<a href="' + signatureEsc(line.href(raw)) + '" style="color:' + line.color + ';text-decoration:none;">' + text + '</a>' : text;
+    rows += '<tr><td style="' + style + '">' + inner + '</td></tr>';
+    y = top + lineHeight;
+  }
+  if (y < H) rows += '<tr><td height="' + (H - y) + '" style="height:' + (H - y) + 'px;line-height:' + (H - y) + 'px;font-size:1px;mso-line-height-rule:exactly;">&nbsp;</td></tr>';
+  return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;border-collapse:collapse;mso-table-lspace:0;mso-table-rspace:0;"><tr><td width="' + LEFT + '" valign="top" style="width:' + LEFT + 'px;padding:0;vertical-align:top;font-size:0;line-height:0;"><img src="' + signatureEsc(logo) + '" width="' + LEFT + '" height="' + H + '" alt="Expresión Jurídica Consultores" style="display:block;width:' + LEFT + 'px;height:' + H + 'px;border:0;outline:none;"></td><td width="' + (600 - LEFT) + '" height="' + H + '" valign="top" background="' + signatureEsc(bg) + '" bgcolor="#ffffff" style="width:' + (600 - LEFT) + 'px;height:' + H + 'px;padding:0;vertical-align:top;background-color:#ffffff;background-image:url(\'' + signatureEsc(bg) + '\');background-repeat:no-repeat;background-position:0 0;background-size:' + (600 - LEFT) + 'px ' + H + 'px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="' + (600 - LEFT) + '" style="width:' + (600 - LEFT) + 'px;border-collapse:collapse;">' + rows + '</table></td></tr></table>';
 }
-
 function renderSignatureEditor(value = signatureDefaults) {
   const next = { ...signatureDefaults, ...value };
   for (const key of Object.keys(signatureDefaults)) { const element = $(`#signature-${key === 'baseUrl' ? 'base-url' : key}`); if (element) element.value = next[key] || ''; }
   const base = signatureAssetBase(next);
-  $('#signature-preview').innerHTML = `<div class="signature-preview-card"><img src="${signatureEsc(`${base}logo.png`)}" alt="" /><div class="signature-preview-copy"><strong>${signatureEsc(next.name || 'Nombre Apellido')}</strong><b>${signatureEsc(next.role || 'Cargo')}</b>${next.phone ? `<a href="tel:${signatureEsc(next.phone)}">${signatureEsc(next.phone)}</a>` : ''}${next.email ? `<a href="mailto:${signatureEsc(next.email)}">${signatureEsc(next.email)}</a>` : ''}<span>${signatureEsc(next.address1)}</span><span>${signatureEsc(next.address2)}</span></div></div>`;
-  $('#signature-html').value = buildSignatureHtml(next);
+  const html = buildSignatureHtml(next);
+  $('#signature-preview').innerHTML = '<iframe class="signature-preview-frame" title="Vista previa de la firma" srcdoc="' + signatureEsc(html) + '"></iframe>';
+  $('#signature-html').value = html;
+}
+
+function signatureFileStem(value) {
+  return String(value.name || 'firma-expresion-juridica').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'firma-expresion-juridica';
+}
+function downloadBlob(filename, blob) {
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+function downloadSignatureHtml(value = signatureValues()) {
+  downloadBlob(signatureFileStem(value) + '.html', new Blob([buildSignatureHtml(value)], { type: 'text/html;charset=utf-8' }));
+  notify('HTML descargado.');
+}
+async function downloadSignaturePng(value = signatureValues()) {
+  try {
+    const image = new Image();
+    image.src = '/firma-assets/firma-fondo.png';
+    await image.decode();
+    const scale = image.naturalWidth / 2087.971;
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext('2d');
+    context.drawImage(image, 0, 0);
+    context.textBaseline = 'alphabetic';
+    const lines = [{ key: 'name', size: 80, x: 891.016, base: 174.748, color: '#B08D57', serif: true }, { key: 'role', size: 47.0786, x: 885.185, base: 252.953, color: '#0C112B' }, { key: 'phone', size: 43, x: 992.543, base: 423.496, color: '#141A3A' }, { key: 'email', size: 43, x: 992.543, base: 528.457, color: '#141A3A' }, { key: 'address1', size: 43, x: 992.543, base: 623.657, color: '#141A3A' }, { key: 'address2', size: 43, x: 992.543, base: 669.757, color: '#141A3A' }];
+    for (const line of lines) { context.fillStyle = line.color; context.font = (line.serif ? 'italic ' : '') + '400 ' + (line.size * scale) + 'px ' + (line.serif ? 'Georgia,Times New Roman,serif' : 'Arial,sans-serif'); context.fillText(String(value[line.key] || ''), line.x * scale, line.base * scale); }
+    canvas.toBlob((blob) => { if (blob) downloadBlob(signatureFileStem(value) + '.png', blob); });
+    notify('PNG descargado.');
+  } catch { notify('No se pudo generar el PNG.', 'error'); }
+}
+async function saveSignatureCopy(event) {
+  event.preventDefault();
+  const value = signatureValues();
+  try { const response = await api('/api/cms/signatures', { method: 'POST', body: value }); state.currentSignature = response.signature; notify('Nueva firma guardada en el CMS.'); await loadSignatures(); }
+  catch (error) { notify('No se guardó la nueva firma: ' + error.message, 'error'); }
 }
 
 function renderSavedSignatures() {
   const list = $('#signatures-list');
-  list.innerHTML = state.signatures.map((signature) => `<div class="signature-saved-row"><div><strong>${signatureEsc(signature.name)}</strong><small>${signatureEsc(signature.role || 'Sin cargo')} · ${signatureEsc(signature.email)}</small></div><div class="signature-saved-actions"><button class="mini-button load-signature" data-signature-id="${signatureEsc(signature.id)}" type="button">Editar</button><button class="mini-button delete-signature" data-signature-id="${signatureEsc(signature.id)}" type="button">Eliminar</button></div></div>`).join('') || '<div class="empty-state"><span>Aún no hay firmas guardadas.</span></div>';
+  list.innerHTML = state.signatures.map((signature) => `<div class="signature-saved-row"><div><strong>${signatureEsc(signature.name)}</strong><small>${signatureEsc(signature.role || 'Sin cargo')} · ${signatureEsc(signature.email)}</small></div><div class="signature-saved-actions"><button class="mini-button load-signature" data-signature-id="${signatureEsc(signature.id)}" type="button">Editar</button><button class="mini-button download-signature-html" data-signature-id="${signatureEsc(signature.id)}" type="button">HTML</button><button class="mini-button download-signature-png" data-signature-id="${signatureEsc(signature.id)}" type="button">PNG</button><button class="mini-button delete-signature" data-signature-id="${signatureEsc(signature.id)}" type="button">Eliminar</button></div></div>`).join('') || '<div class="empty-state"><span>Aún no hay firmas guardadas.</span></div>';
   $$('.load-signature').forEach((button) => button.addEventListener('click', () => { const signature = state.signatures.find((item) => item.id === button.dataset.signatureId); if (signature) { state.currentSignature = signature; renderSignatureEditor(signature); } }));
   $$('.delete-signature').forEach((button) => button.addEventListener('click', async () => { try { await api(`/api/cms/signatures/${encodeURIComponent(button.dataset.signatureId)}`, { method: 'DELETE' }); notify('Firma eliminada.'); await loadSignatures(); } catch (error) { notify(`No se eliminó la firma: ${error.message}`, 'error'); } }));
 }
@@ -671,6 +737,17 @@ async function importSiteMedia() {
   }
 }
 
+function authErrorMessage(error) {
+  if (error?.code === 'LOGIN_TEMPORARILY_BLOCKED') {
+    const wait = Number(error.retryAfterSeconds || 0);
+    return wait > 60
+      ? 'Por seguridad, el acceso está pausado. Inténtalo de nuevo en unos minutos.'
+      : 'Por seguridad, espera un momento antes de volver a intentarlo.';
+  }
+  if (error?.message === 'INVALID_EMAIL_OR_PASSWORD' || error?.message === 'CREDENTIALS_INVALID') return 'Email o contraseña incorrectos.';
+  return 'No se pudo completar el acceso: ' + (error?.message || 'inténtalo de nuevo.');
+}
+
 async function boot() {
   $('#auth-form').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -709,6 +786,9 @@ async function boot() {
   $('#home-kind').addEventListener('change', filterHomeFields);
   $('#home-refresh').addEventListener('click', loadHome);
   $('#signature-form').addEventListener('submit', saveSignature);
+  $('#signature-save-copy').addEventListener('click', saveSignatureCopy);
+  $('#signature-download-html').addEventListener('click', () => downloadSignatureHtml(signatureValues()));
+  $('#signature-download-png').addEventListener('click', () => downloadSignaturePng(signatureValues()));
   ['name', 'role', 'phone', 'email', 'address1', 'address2', 'base-url'].forEach((key) => $(`#signature-${key}`).addEventListener('input', () => renderSignatureEditor(signatureValues())));
   $('#signature-reset').addEventListener('click', () => { state.currentSignature = null; renderSignatureEditor(signatureDefaults); });
   $('#signature-copy-code').addEventListener('click', async () => { await navigator.clipboard?.writeText($('#signature-html').value); notify('Código de firma copiado.'); });
