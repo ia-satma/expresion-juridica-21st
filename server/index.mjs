@@ -8,14 +8,17 @@ import { buildInventory, fileForRoute, inventoryHtml, routeFromFile, SITE_DIR } 
 import { auth, authDatabase, migrateAuthDatabase } from './auth.mjs';
 import { DATA_DIR, DATA_SCOPE, MEDIA_DIR, STORE_FILE } from './data-paths.mjs';
 import { appStorageEnabled, appStorageScope, deleteFile as deleteStorageFile, downloadFile as downloadStorageFile, removeLocalFile, uploadFile as uploadStorageFile } from './app-storage.mjs';
+import { generatePresentation, filePathForPresentation, ensurePresentationDir } from './presentation-generator.mjs';
 
 const ROOT = process.cwd();
 const PORT = Number(process.env.PORT || 3000);
 const ADMIN_DIR = path.join(ROOT, 'public', 'admin');
 const OWNER_EMAIL = String(process.env.CMS_OWNER_EMAIL || 'ia@satma.mx').trim().toLowerCase();
+const PRESENTATIONS_DIR = path.resolve(DATA_DIR, 'generated-presentations');
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(MEDIA_DIR, { recursive: true });
+ensurePresentationDir();
 
 const defaultSettings = () => ({
   siteName: 'Expresión Jurídica Consultores',
@@ -61,6 +64,7 @@ const defaultStore = () => ({
   publishedOverrides: {},
   media: [],
   signatures: [],
+  presentations: [],
   submissions: [],
   revisions: [],
   audit: [],
@@ -93,6 +97,7 @@ function readStore() {
           .map((admin) => ({ ...admin, provider: 'password', mustChangePassword: Boolean(admin.mustChangePassword) }))
         : [],
       signatures: Array.isArray(parsed.signatures) ? parsed.signatures : [],
+      presentations: Array.isArray(parsed.presentations) ? parsed.presentations : [],
       settings: mergeSettings(parsed.settings)
     };
   } catch (error) {
@@ -861,6 +866,90 @@ app.delete('/api/cms/signatures/:id', requireAuth, requireEditor, requireCsrf, (
   audit('signature.delete', req.cmsUser, { signatureId: signature.id });
   writeStore();
   res.status(204).end();
+});
+
+function publicPresentationItem(item) {
+  const id = encodeURIComponent(item.id);
+  return {
+    id: item.id,
+    title: item.title,
+    subtitle: item.subtitle,
+    topic: item.topic,
+    sourceLength: item.sourceLength || 0,
+    language: item.language || 'es',
+    style: item.style || 'editorial',
+    accentColor: item.accentColor || '#A98245',
+    slideCount: item.slideCount || item.outline?.slides?.length || 0,
+    aiUsed: Boolean(item.aiUsed),
+    model: item.model || null,
+    warning: item.warning || null,
+    createdAt: item.createdAt,
+    createdBy: item.createdBy || '',
+    outline: item.outline || null,
+    files: {
+      pptx: `/api/cms/presentations/${id}/file/pptx`,
+      pdf: `/api/cms/presentations/${id}/file/pdf`,
+      images: Array.from({ length: item.slideCount || item.outline?.slides?.length || 0 }, (_, index) => `/api/cms/presentations/${id}/file/png?slide=${index}`)
+    }
+  };
+}
+
+app.get('/api/cms/presentations', requireAuth, (req, res) => {
+  res.json({ presentations: (store.presentations || []).map(publicPresentationItem) });
+});
+
+app.post('/api/cms/presentations/generate', requireAuth, requireEditor, requireCsrf, async (req, res) => {
+  const body = req.body || {};
+  const topic = String(body.topic || '').trim().slice(0, 10000);
+  if (topic.length < 6) return res.status(422).json({ error: 'PRESENTATION_TOPIC_REQUIRED' });
+  const sourceText = String(body.sourceText || '').trim().slice(0, 60000);
+  const language = ['es', 'en'].includes(body.language) ? body.language : 'es';
+  const style = ['editorial', 'auto', 'dark'].includes(body.style) ? body.style : 'editorial';
+  try {
+    const result = await generatePresentation({ topic, sourceText, slideCount: body.slideCount, language, style, accentColor: body.accentColor });
+    const record = { ...result, createdBy: req.cmsUser.email };
+    store.presentations = [record, ...(store.presentations || [])].slice(0, 100);
+    audit('presentation.create', req.cmsUser, { presentationId: record.id, slideCount: record.slideCount, aiUsed: record.aiUsed, model: record.model });
+    writeStore();
+    res.status(201).json({ presentation: publicPresentationItem(record) });
+  } catch (error) {
+    console.error('[presentation-agent] generation failed', error);
+    res.status(500).json({ error: 'PRESENTATION_GENERATION_FAILED', detail: error.message });
+  }
+});
+
+app.get('/api/cms/presentations/:id/file/:kind', requireAuth, async (req, res, next) => {
+  const item = (store.presentations || []).find((candidate) => candidate.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'PRESENTATION_NOT_FOUND' });
+  const kind = String(req.params.kind || '').toLowerCase();
+  let file = null;
+  let contentType = 'application/octet-stream';
+  let disposition = 'attachment';
+  if (kind === 'pptx') { file = item.files?.pptx; contentType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'; }
+  if (kind === 'pdf') { file = item.files?.pdf; contentType = 'application/pdf'; }
+  if (kind === 'png') {
+    const index = Number.parseInt(req.query.slide, 10);
+    file = Number.isInteger(index) ? item.files?.images?.[index] : null;
+    contentType = 'image/png';
+    disposition = 'inline';
+  }
+  if (!file) return res.status(404).json({ error: 'PRESENTATION_FILE_NOT_FOUND' });
+  res.set('Cache-Control', 'private, no-store');
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('Content-Type', contentType);
+  res.set('Content-Disposition', `${disposition}; filename="${String(file.name || `${item.id}.${kind}`).replace(/[^a-zA-Z0-9._-]/g, '-') }"`);
+  if (file.storage === 'replit-app-storage') {
+    try {
+      const result = await downloadStorageFile(file.relative);
+      if (!result.ok) return res.status(404).json({ error: 'PRESENTATION_FILE_NOT_FOUND' });
+      return res.send(result.value);
+    } catch (error) {
+      return next(error);
+    }
+  }
+  const localPath = filePathForPresentation(file);
+  if (!localPath || !path.resolve(localPath).startsWith(`${PRESENTATIONS_DIR}${path.sep}`) || !fs.existsSync(localPath)) return res.status(404).json({ error: 'PRESENTATION_FILE_NOT_FOUND' });
+  return res.sendFile(localPath, { dotfiles: 'deny' }, (error) => { if (error && !res.headersSent) next(error); });
 });
 
 app.get('/api/cms/submissions', requireAuth, (req, res) => {

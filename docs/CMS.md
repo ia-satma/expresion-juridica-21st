@@ -39,6 +39,14 @@ Los datos se separan por `CMS_DATA_SCOPE`: usa `development` en el workspace y `
 
 El inventario incluye HTML de texto, títulos, metadatos, enlaces, `href`, `src`, `srcset`, posters, `alt`, `aria-label`, placeholders y otros atributos visibles. Los campos HTML se sanitizan para retirar scripts, estilos y handlers inline.
 
+## Agente de presentaciones
+
+`Presentaciones IA` crea una presentación a partir de un tema y notas de apoyo. El agente genera una estructura editable en PPTX, un PDF y una imagen PNG por diapositiva; cada generación queda registrada en `data/cms.json` y sus archivos se guardan en `data/generated-presentations`. Cuando App Storage está conectado, los mismos archivos se suben al prefijo `generated-presentations/` del entorno actual.
+
+Para activar el modelo de OpenAI, agrega `OPENAI_API_KEY` en Secrets. De forma opcional puedes definir `OPENAI_PRESENTATION_MODEL` y `OPENAI_BASE_URL`. Si todavía no hay clave, el CMS genera un esquema local de prueba para validar el flujo, el diseño y las descargas; lo marca claramente como esquema de respaldo y no lo publica automáticamente.
+
+El acceso al agente requiere una sesión del CMS; generar archivos requiere rol `owner` o `editor`. El historial es privado y las descargas pasan por rutas autenticadas. La revisión humana ocurre antes de compartir el PPTX, PDF o las imágenes.
+
 ## Medios
 
 La Biblioteca guarda archivos en `storage/media` y registra una referencia persistente en el CMS. El panel permite reutilizarlos en campos de imagen, video, audio y documentos. En Replit, monta un almacenamiento persistente para esa carpeta antes de publicar.

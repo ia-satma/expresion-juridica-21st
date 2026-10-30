@@ -15,6 +15,7 @@ const state = {
   users: [],
   submissions: [],
   signatures: [],
+  presentations: [],
   currentSignature: null,
   setup: false
 };
@@ -126,7 +127,7 @@ function showApp() {
 
 function navigate(view) {
   state.view = view;
-  const titles = { home: 'Inicio', dashboard: 'Resumen', pages: 'Páginas', signatures: 'Firmas de correo', media: 'App Storage', revisions: 'Versiones', activity: 'Actividad', submissions: 'Solicitudes', settings: 'Ajustes', users: 'Usuarios' };
+  const titles = { home: 'Inicio', dashboard: 'Resumen', pages: 'Páginas', signatures: 'Firmas de correo', presentations: 'Presentaciones IA', media: 'App Storage', revisions: 'Versiones', activity: 'Actividad', submissions: 'Solicitudes', settings: 'Ajustes', users: 'Usuarios' };
   $('#view-title').textContent = titles[view] || 'CMS';
   $$('.nav-item[data-view]').forEach((button) => button.classList.toggle('is-active', button.dataset.view === view));
   $$('.content-view').forEach((section) => { section.hidden = section.id !== `${view}-view`; });
@@ -134,6 +135,7 @@ function navigate(view) {
   if (view === 'dashboard') loadDashboard();
   if (view === 'pages') loadPages();
   if (view === 'signatures') loadSignatures();
+  if (view === 'presentations') loadPresentations();
   if (view === 'media') loadMedia();
   if (view === 'revisions') loadRevisions();
   if (view === 'activity') loadActivity();
@@ -587,6 +589,74 @@ async function saveSignature(event) {
   } catch (error) { notify(`No se guardó la firma: ${error.message}`, 'error'); }
 }
 
+function presentationStatus(presentation) {
+  if (presentation.aiUsed) return `Generada con ${presentation.model || 'OpenAI'} · revisa el contenido antes de compartir`;
+  if (presentation.warning === 'OPENAI_API_KEY_MISSING') return 'Prueba local guardada · añade la clave de OpenAI para activar el agente';
+  return 'Esquema de respaldo guardado · revisa el contenido antes de compartir';
+}
+
+function renderPresentationResult(presentation) {
+  const result = $('#presentation-result');
+  if (!result) return;
+  result.hidden = false;
+  $('#presentation-result-title').textContent = presentation.title || 'Presentación lista';
+  $('#presentation-result-meta').textContent = `${presentation.slideCount || 0} diapositivas · ${formatDate(presentation.createdAt)} · ${presentationStatus(presentation)}`;
+  $('#presentation-download-pptx').href = presentation.files?.pptx || '#';
+  $('#presentation-download-pdf').href = presentation.files?.pdf || '#';
+  const gallery = $('#presentation-result-gallery');
+  gallery.innerHTML = (presentation.files?.images || []).slice(0, 6).map((src, index) => `<figure class="presentation-slide"><img src="${escapeHtml(src)}" alt="Diapositiva ${index + 1}" loading="lazy" /><figcaption>Diapositiva ${index + 1}</figcaption></figure>`).join('');
+}
+
+function renderPresentations() {
+  const list = $('#presentations-list');
+  if (!list) return;
+  list.innerHTML = state.presentations.map((presentation) => `<article class="presentation-card"><div class="presentation-card-copy"><p class="eyebrow">${escapeHtml(formatDate(presentation.createdAt))}</p><h3>${escapeHtml(presentation.title || presentation.topic)}</h3><p>${escapeHtml(presentation.subtitle || presentation.topic || '')}</p><small>${escapeHtml(`${presentation.slideCount || 0} diapositivas · ${presentationStatus(presentation)}`)}</small></div><div class="presentation-card-actions"><a class="button button-secondary" href="${escapeHtml(presentation.files?.pptx || '#')}" download>Descargar PPTX</a><a class="button button-secondary" href="${escapeHtml(presentation.files?.pdf || '#')}" download>Descargar PDF</a><button class="mini-button view-presentation" type="button" data-presentation-id="${escapeHtml(presentation.id)}">Ver imágenes</button></div></article>`).join('') || '<div class="empty-state"><strong>Aún no hay presentaciones</strong><span>Genera la primera desde el formulario.</span></div>';
+  $$('.view-presentation', list).forEach((button) => button.addEventListener('click', () => {
+    const presentation = state.presentations.find((item) => item.id === button.dataset.presentationId);
+    if (presentation) renderPresentationResult(presentation);
+  }));
+}
+
+async function loadPresentations() {
+  try {
+    const response = await api('/api/cms/presentations');
+    state.presentations = response.presentations || [];
+    renderPresentations();
+  } catch (error) {
+    if (error.code !== 'AUTH_REQUIRED') notify('No se pudieron cargar las presentaciones.', 'error');
+  }
+}
+
+async function submitPresentation(event) {
+  event.preventDefault();
+  const button = $('#generate-presentation');
+  const status = $('#presentation-status');
+  button.disabled = true;
+  status.textContent = 'Preparando archivos…';
+  try {
+    const response = await api('/api/cms/presentations/generate', {
+      method: 'POST',
+      body: {
+        topic: $('#presentation-topic').value,
+        sourceText: $('#presentation-source').value,
+        slideCount: Number($('#presentation-slide-count').value),
+        language: $('#presentation-language').value,
+        style: $('#presentation-style').value,
+        accentColor: $('#presentation-accent').value
+      }
+    });
+    renderPresentationResult(response.presentation);
+    await loadPresentations();
+    status.textContent = 'Archivos listos.';
+    notify('Presentación guardada en el historial.');
+  } catch (error) {
+    status.textContent = '';
+    notify(error.code === 'PRESENTATION_TOPIC_REQUIRED' ? 'Escribe un tema de al menos 6 caracteres.' : `No se pudo generar: ${error.message}`, 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function importSiteMedia() {
   const button = $('#media-import-site');
   if (button) { button.disabled = true; button.textContent = 'Cargando medios…'; }
@@ -643,6 +713,8 @@ async function boot() {
   $('#signature-reset').addEventListener('click', () => { state.currentSignature = null; renderSignatureEditor(signatureDefaults); });
   $('#signature-copy-code').addEventListener('click', async () => { await navigator.clipboard?.writeText($('#signature-html').value); notify('Código de firma copiado.'); });
   $('#signature-copy-rich').addEventListener('click', async () => { const html = $('#signature-html').value; try { if (navigator.clipboard?.write && window.ClipboardItem) await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([html], { type: 'text/plain' }) })]); else await navigator.clipboard?.writeText(html); notify('Firma copiada.'); } catch { await navigator.clipboard?.writeText(html); notify('Código de firma copiado.'); } });
+  $('#presentation-form').addEventListener('submit', submitPresentation);
+  $('#refresh-presentations').addEventListener('click', loadPresentations);
   $('#save-settings').addEventListener('click', saveSettings);
   $('#settings-form').addEventListener('submit', (event) => { event.preventDefault(); saveSettings(); });
   $('#refresh-users').addEventListener('click', loadUsers);

@@ -52,6 +52,7 @@
           <span class="nav-section-title"><span>Contenido del sitio</span><b>⌄</b></span>
           <button class="nav-item" data-view="pages"><span class="nav-glyph">▤</span>Páginas</button>
           <button class="nav-item" data-view="signatures"><span class="nav-glyph">✎</span>Firmas de correo</button>
+          <button class="nav-item" data-view="presentations"><span class="nav-glyph">▥</span>Presentaciones IA</button>
           <button class="nav-item" data-view="media"><span class="nav-glyph">▧</span>App Storage</button>
           <button class="nav-item" data-view="revisions"><span class="nav-glyph">◷</span>Versiones</button>
           <span class="nav-section-title"><span>Registros recibidos</span><b>⌄</b></span>
@@ -101,6 +102,29 @@
         <section id="signatures-view" class="content-view" hidden>
           <div class="view-heading"><div><p class="eyebrow">Herramienta para el equipo</p><h1>Firmas de correo</h1><p>Crea una firma con el diseño de Expresión Jurídica, copia el resultado y úsalo en Gmail, Outlook o Apple Mail.</p></div></div>
           <div class="signature-layout"><form id="signature-form" class="panel signature-form"><div class="panel-heading"><div><p class="eyebrow">Datos de la firma</p><h2>Información personal</h2></div></div><div class="settings-fields"><label>Nombre<input id="signature-name" required placeholder="Nombre Apellido" /></label><label>Cargo<input id="signature-role" placeholder="Socio · Abogada · Consultor" /></label><label>Teléfono<input id="signature-phone" placeholder="00 0000 0000" /></label><label>Correo<input id="signature-email" type="email" required placeholder="nombre@expresionjuridica.com" /></label><label>Dirección<input id="signature-address1" placeholder="Boulevard Europa No. 33," /></label><label>Dirección (línea 2)<input id="signature-address2" placeholder="Xalapa, Veracruz." /></label><label>URL pública de imágenes<input id="signature-base-url" placeholder="https://tu-dominio.com/firma-assets/email/" /></label><div class="signature-form-actions"><button class="button button-primary" type="submit">Guardar firma</button><button id="signature-reset" class="button button-secondary" type="button">Limpiar</button></div><p class="settings-help">La URL pública sólo es necesaria para que las imágenes se vean al pegar la firma en un correo. Los archivos del diseño están disponibles en App Storage.</p></div></form><section class="signature-output"><div class="panel signature-preview-panel"><div class="panel-heading"><div><p class="eyebrow">Vista previa</p><h2>Así se verá</h2></div></div><div id="signature-preview" class="signature-preview"></div></div><div class="panel signature-code-panel"><div class="panel-heading"><div><p class="eyebrow">Lista para usar</p><h2>Firma para correo</h2></div><div class="signature-code-actions"><button id="signature-copy-rich" class="button button-primary" type="button">Copiar firma</button><button id="signature-copy-code" class="button button-secondary" type="button">Copiar código</button></div></div><textarea id="signature-html" class="signature-html" readonly spellcheck="false"></textarea></div><section class="panel signature-saved-panel"><div class="panel-heading"><div><p class="eyebrow">Guardadas en el CMS</p><h2>Firmas del equipo</h2></div></div><div id="signatures-list" class="signatures-list"></div></section></section></div>
+        </section>
+
+        <section id="presentations-view" class="content-view" hidden>
+          <div class="view-heading"><div><p class="eyebrow">Agente editorial</p><h1>Presentaciones IA</h1><p>Escribe un tema, agrega contexto si lo tienes y recibe una presentación lista para revisar en PPTX, PDF e imágenes.</p></div></div>
+          <div class="presentation-layout">
+            <form id="presentation-form" class="panel presentation-form">
+              <div class="panel-heading"><div><p class="eyebrow">Nueva presentación</p><h2>Describe lo que necesitas</h2></div></div>
+              <div class="settings-fields">
+                <label>Tema o título<textarea id="presentation-topic" rows="3" required minlength="6" placeholder="Ejemplo: propuesta de servicios para una empresa de energía"></textarea></label>
+                <p class="settings-help">El agente organiza la información y evita inventar datos. Revisa el contenido antes de compartirlo.</p>
+                <label>Contexto o material de apoyo <span class="field-optional">Opcional</span><textarea id="presentation-source" rows="7" placeholder="Pega aquí notas, objetivos, cifras o el texto de referencia."></textarea></label>
+                <div class="settings-three"><label>Número de diapositivas<select id="presentation-slide-count"><option value="3">3 · breve</option><option value="5">5 · ejecutiva</option><option value="6" selected>6 · completa</option><option value="8">8 · detallada</option><option value="10">10 · extensa</option></select></label><label>Idioma<select id="presentation-language"><option value="es" selected>Español</option><option value="en">English</option></select></label><label>Estilo<select id="presentation-style"><option value="editorial" selected>Editorial</option><option value="auto">Alternado</option><option value="dark">Oscuro</option></select></label></div>
+                <label>Color de acento<input id="presentation-accent" type="color" value="#A98245" /></label>
+                <div class="presentation-form-actions"><button id="generate-presentation" class="button button-primary" type="submit">Generar presentación</button><span id="presentation-status" class="field-status" role="status"></span></div>
+              </div>
+            </form>
+            <section id="presentation-result" class="panel presentation-result" hidden>
+              <div class="panel-heading"><div><p class="eyebrow">Resultado</p><h2 id="presentation-result-title">Presentación lista</h2><p id="presentation-result-meta" class="settings-help"></p></div></div>
+              <div class="presentation-result-actions"><a id="presentation-download-pptx" class="button button-primary" download>Descargar PPTX</a><a id="presentation-download-pdf" class="button button-secondary" download>Descargar PDF</a></div>
+              <div id="presentation-result-gallery" class="presentation-gallery"></div>
+            </section>
+          </div>
+          <section class="panel presentation-history"><div class="panel-heading"><div><p class="eyebrow">Historial privado</p><h2>Presentaciones guardadas</h2><p class="settings-help">Cada generación queda asociada a tu cuenta y se conserva en App Storage.</p></div><button id="refresh-presentations" class="text-action" type="button">Actualizar</button></div><div id="presentations-list" class="presentations-list"></div></section>
         </section>
 
         <section id="media-view" class="content-view" hidden>
