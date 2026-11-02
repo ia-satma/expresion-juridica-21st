@@ -21,6 +21,7 @@ const testMedia = path.join(root, 'storage/media', process.env.CMS_DATA_SCOPE);
 await fs.mkdir(testMedia, { recursive: true }); await fs.writeFile(path.join(testMedia, '.test-only'), 'isolated QA scope');
 for (const key of ['REPL_ID', 'REPLIT_DEPLOYMENT_URL', 'REPLIT_DEV_DOMAIN']) delete process.env[key];
 const { registerDocumentRoutes } = await import('../server/document-routes.mjs');
+const { readStudioState, writeStudioState } = await import('../server/studio-state.mjs');
 const requireAuth = (req, res, next) => { if (!req.headers.cookie?.includes('qa_session=studio')) return res.status(401).json({ error: 'AUTH_REQUIRED' }); req.cmsUser = { id: req.headers['x-qa-user'] || 'owner-qa', email: 'preview@example.test', role: 'owner' }; next(); };
 const requireCsrf = (req, res, next) => req.headers['x-cms-csrf'] === 'qa-csrf' ? next() : res.status(403).json({ error: 'CSRF_INVALID' });
 function application() {
@@ -36,7 +37,7 @@ const base = `http://127.0.0.1:${server.address().port}`, headers = { cookie: 'q
 async function json(url, options = {}, origin = base) { const response = await fetch(origin + url, { ...options, headers: { ...headers, ...options.headers } }); return { response, data: await response.json() }; }
 async function finish(id, origin = base) {
   const start = Date.now();
-  for (;;) { const { data } = await json(`/api/cms/documents/jobs/${id}`, {}, origin); if (data.job.state === 'failed') throw new Error(data.job.error); if (data.job.state === 'complete') return data.job.result; if (Date.now() - start > 45000) throw new Error('QA_TIMEOUT'); await new Promise(resolve => setTimeout(resolve, 20)); }
+  for (;;) { const { data } = await json(`/api/cms/documents/jobs/${id}`, {}, origin); if (data.job.state === 'failed') throw new Error(data.job.error); if (data.job.state === 'complete' && (await readStudioState('jobs', id))?.state === 'complete') return data.job.result; if (Date.now() - start > 45000) throw new Error('QA_TIMEOUT'); await new Promise(resolve => setTimeout(resolve, 20)); }
 }
 let replica;
 try {
@@ -58,6 +59,18 @@ try {
   assert.match(await zip.file('word/header1.xml').async('string'), /behindDoc="1"/); assert.match(await zip.file('word/fontTable.xml').async('string'), /embedItalic/);
   const text = (await mammoth.extractRawText({ buffer: docxBytes })).value; for (const line of source.split('\n').filter(Boolean)) assert(text.includes(line), 'Preserve every supplied line'); assert(!text.includes('Lorem ipsum'));
   assert.equal((await PDFDocument.load(pdfBytes)).getPageCount(), result.pageCount);
+  // Existing documents must also use the current format without modifying
+  // their content or edit version, even when their saved exports are stale.
+  const legacy = await readStudioState('documents', result.id), legacyVersion = legacy.updatedAt;
+  delete legacy.layoutVersion;
+  for (const kind of ['docx', 'pdf']) legacy.files[kind].localPath = 'data/missing-legacy-export';
+  await writeStudioState('documents', result.id, legacy);
+  const refreshedDocx = Buffer.from(await (await fetch(base + result.files.docx, { headers })).arrayBuffer());
+  const refreshedPdf = Buffer.from(await (await fetch(base + result.files.pdf, { headers })).arrayBuffer());
+  assert.match(await (await JSZip.loadAsync(refreshedDocx)).file('word/document.xml').async('string'), /w:jc w:val="both"/);
+  assert.equal((await PDFDocument.load(refreshedPdf)).getPageCount(), result.pageCount);
+  const unchanged = await readStudioState('documents', result.id);
+  assert.equal(unchanged.updatedAt, legacyVersion); assert.deepEqual(unchanged.document, legacy.document); assert.equal(calls.length, 0);
   // A new route instance starts with an empty store and no in-memory job map.
   replica = application().listen(0, '127.0.0.1'); await new Promise(resolve => replica.once('listening', resolve)); const replicaBase = `http://127.0.0.1:${replica.address().port}`;
   const recovered = await json('/api/cms/documents', {}, replicaBase); assert.equal(recovered.data.documents[0].id, result.id); assert.equal((await finish(started.data.job.id, replicaBase)).id, result.id);

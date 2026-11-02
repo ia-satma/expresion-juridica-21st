@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createStudioJobs } from './studio-jobs.mjs';
 import { listStudioRecords, readStudioState, writeStudioState } from './studio-state.mjs';
-import { generateDocument, renderDocument, readDocumentFile, normalizeDocument, LETTERHEAD_DIR } from './document-generator.mjs';
+import { generateDocument, renderDocument, currentDocumentExport, normalizeDocument, LETTERHEAD_DIR } from './document-generator.mjs';
 import { presentationModels } from './presentation-generator.mjs';
 
 export function registerDocumentRoutes(app, { store, writeStore, requireAuth, requireEditor, requireCsrf, audit }) {
@@ -54,7 +54,7 @@ export function registerDocumentRoutes(app, { store, writeStore, requireAuth, re
       res.set('Cache-Control', 'private, no-store').set('X-Content-Type-Options', 'nosniff');
       res.type(kind === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
       res.set('Content-Disposition', `${kind === 'pdf' && req.query.preview === '1' ? 'inline' : 'attachment'}; filename="${item.files[kind].name.replace(/[^a-zA-Z0-9._-]/g, '-')}"`);
-      res.send(await readDocumentFile(item.files[kind]));
+      res.send(await currentDocumentExport(item, kind));
     } catch (error) { if (error.code === 'ENOENT' || error.message === 'DOCUMENT_FILE_NOT_FOUND') res.status(404).end(); else next(error); }
   });
 }

@@ -11,6 +11,7 @@ import { editorialSkill, EDITORIAL_SKILL_ID } from './editorial-skill.mjs';
 
 export const DOCUMENT_DIR = path.join(DATA_DIR, 'generated-documents');
 export const LETTERHEAD_DIR = path.join(process.cwd(), 'server/assets/ej-brand');
+export const DOCUMENT_LAYOUT_VERSION = '20261102-justify-contact';
 // The original Letter page has a full-height left panel and a contact header.
 export const DOCUMENT_PAGE = { width: 612, height: 792, left: 166, right: 32, top: 149, bottom: 58 };
 const clean = value => String(value ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
@@ -180,13 +181,22 @@ export async function readDocumentFile(file) {
   if (!local.startsWith(`${DOCUMENT_DIR}${path.sep}`)) throw new Error('DOCUMENT_FILE_NOT_FOUND');
   return fs.readFile(local);
 }
+export async function currentDocumentExport(record, kind) {
+  if (record.layoutVersion === DOCUMENT_LAYOUT_VERSION) return readDocumentFile(record.files[kind]);
+  // Older saved exports use the current layout without rewriting their text,
+  // timestamps or edit version. This path never calls the AI provider.
+  const document = normalizeDocument(record.document), title = clean(record.title || 'Documento de Expresión Jurídica').slice(0, 180);
+  if (kind === 'docx') return makeDocx(document, title);
+  if (kind === 'pdf') return (await makePdf(document, title)).buffer;
+  throw new Error('DOCUMENT_FILE_NOT_FOUND');
+}
 export async function renderDocument(record, progress = () => {}) {
   const document = normalizeDocument(record.document), title = clean(record.title || 'Documento de Expresión Jurídica').slice(0, 180);
   progress('Aplicando la hoja membretada y preparando las páginas', 0, 2);
   const pdf = await makePdf(document, title); progress('Preparando el archivo de Word editable', 1, 2);
   const docx = await makeDocx(document, title), id = crypto.randomUUID(), stem = slug(title);
   const files = { docx: await saveFile(id, `${stem}.docx`, docx), pdf: await saveFile(id, `${stem}.pdf`, pdf.buffer) };
-  return { ...record, document, title, files, pageCount: pdf.pages, brandProfile: 'ej-manual-2026', agentSkill: EDITORIAL_SKILL_ID, updatedAt: new Date().toISOString() };
+  return { ...record, document, title, files, layoutVersion: DOCUMENT_LAYOUT_VERSION, pageCount: pdf.pages, brandProfile: 'ej-manual-2026', agentSkill: EDITORIAL_SKILL_ID, updatedAt: new Date().toISOString() };
 }
 export async function generateDocument({ text, title = '', mode = 'preserve', instructions = '' }, progress = () => {}) {
   text = clean(text); if (!text.trim()) throw invalid('Pega el texto que deseas convertir en documento.');
