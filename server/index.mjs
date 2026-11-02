@@ -9,6 +9,7 @@ import { auth, authDatabase, migrateAuthDatabase } from './auth.mjs';
 import { DATA_DIR, DATA_SCOPE, MEDIA_DIR, STORE_FILE } from './data-paths.mjs';
 import { appStorageEnabled, appStorageScope, deleteFile as deleteStorageFile, downloadFile as downloadStorageFile, removeLocalFile, uploadFile as uploadStorageFile } from './app-storage.mjs';
 import { generatePresentation, filePathForPresentation, ensurePresentationDir, presentationModels } from './presentation-generator.mjs';
+import { preparePresentationInputs, cleanupPresentationInputs, MAX_PRESENTATION_FILE_BYTES, presentationInputError } from './presentation-inputs.mjs';
 import { authSecurityPolicy, checkLoginAttempt, recordLoginFailure, recordLoginSuccess } from './auth-security.mjs';
 
 const ROOT = process.cwd();
@@ -16,10 +17,12 @@ const PORT = Number(process.env.PORT || 3000);
 const ADMIN_DIR = path.join(ROOT, 'public', 'admin');
 const OWNER_EMAIL = String(process.env.CMS_OWNER_EMAIL || 'ia@satma.mx').trim().toLowerCase();
 const PRESENTATIONS_DIR = path.resolve(DATA_DIR, 'generated-presentations');
+const PRESENTATION_INPUTS_DIR = path.resolve(DATA_DIR, 'presentation-inputs');
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(MEDIA_DIR, { recursive: true });
 ensurePresentationDir();
+fs.mkdirSync(PRESENTATION_INPUTS_DIR, { recursive: true });
 
 const defaultSettings = () => ({
   siteName: 'Expresión Jurídica Consultores',
@@ -982,7 +985,12 @@ function publicPresentationItem(item) {
     sourceLength: item.sourceLength || 0,
     language: item.language || 'es',
     style: item.style || 'editorial',
-    accentColor: item.accentColor || '#A98245',
+    branding: item.branding || 'firm',
+    brandProfile: item.brandProfile || null,
+    formats: item.formats || ['pptx', 'pdf', 'png'],
+    sources: item.sources || [],
+    documentNames: item.documentNames || [],
+    generatedImageCount: item.generatedImageCount || 0,
     slideCount: item.slideCount || item.outline?.slides?.length || 0,
     aiUsed: Boolean(item.aiUsed),
     model: item.model || null,
@@ -993,8 +1001,9 @@ function publicPresentationItem(item) {
     createdBy: item.createdBy || '',
     outline: item.outline || null,
     files: {
-      pptx: `/api/cms/presentations/${id}/file/pptx`,
-      pdf: `/api/cms/presentations/${id}/file/pdf`,
+      pptx: item.files?.pptx ? `/api/cms/presentations/${id}/file/pptx` : null,
+      pdf: item.files?.pdf ? `/api/cms/presentations/${id}/file/pdf` : null,
+      imagesZip: item.files?.imagesZip ? `/api/cms/presentations/${id}/file/images` : null,
       artwork: item.files?.artwork ? `/api/cms/presentations/${id}/file/artwork` : null,
       images: Array.from({ length: item.slideCount || item.outline?.slides?.length || 0 }, (_, index) => `/api/cms/presentations/${id}/file/png?slide=${index}`)
     }
@@ -1008,23 +1017,61 @@ app.get('/api/cms/presentations', requireAuth, (req, res) => {
   });
 });
 
-app.post('/api/cms/presentations/generate', requireAuth, requireEditor, requireCsrf, async (req, res) => {
-  const body = req.body || {};
-  const topic = String(body.topic || '').trim().slice(0, 10000);
-  if (topic.length < 6) return res.status(422).json({ error: 'PRESENTATION_TOPIC_REQUIRED' });
-  const sourceText = String(body.sourceText || '').trim().slice(0, 60000);
-  const language = ['es', 'en'].includes(body.language) ? body.language : 'es';
-  const style = ['editorial', 'auto', 'dark'].includes(body.style) ? body.style : 'editorial';
+const presentationUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, callback) => callback(null, PRESENTATION_INPUTS_DIR),
+    filename: (_req, _file, callback) => callback(null, crypto.randomUUID())
+  }),
+  limits: { fileSize: MAX_PRESENTATION_FILE_BYTES, files: 30, fields: 20, fieldSize: 150000 },
+  fileFilter: (_req, file, callback) => {
+    const extensions = file.fieldname === 'documents' ? ['.pdf', '.docx', '.txt', '.md'] : ['.png', '.jpg', '.jpeg', '.webp'];
+    const valid = extensions.includes(path.extname(file.originalname).toLowerCase());
+    callback(valid ? null : presentationInputError('Formato de archivo no admitido.'), valid);
+  }
+}).fields([{ name: 'documents', maxCount: 20 }, { name: 'supportImages', maxCount: 10 }]);
+
+function receivePresentationInputs(req, res, next) {
+  if (!req.is('multipart/form-data')) return next();
+  presentationUpload(req, res, async error => {
+    if (!error) return next();
+    await cleanupPresentationInputs(req.files);
+    res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 422).json({ error: error.code || 'PRESENTATION_INPUT_INVALID', detail: error.code === 'LIMIT_FILE_SIZE' ? 'Cada archivo debe pesar como máximo 100 MB.' : error.code === 'LIMIT_UNEXPECTED_FILE' ? 'Admite hasta 20 documentos y 10 imágenes de apoyo.' : error.message });
+  });
+}
+
+app.post('/api/cms/presentations/generate', requireAuth, requireEditor, requireCsrf, receivePresentationInputs, async (req, res) => {
   try {
-    const result = await generatePresentation({ topic, sourceText, slideCount: body.slideCount, language, style, accentColor: body.accentColor, includeImage: body.includeImage === true });
+    const body = req.body || {};
+    const topic = String(body.topic || '').trim();
+    if (topic.length > 10000) throw presentationInputError('El tema admite hasta 10 000 caracteres.');
+    const inputs = await preparePresentationInputs(req.files);
+    if (topic.length < 6 && !inputs.documentNames.length) throw presentationInputError('Escribe un tema de al menos 6 caracteres o sube un documento.', 'PRESENTATION_TOPIC_REQUIRED');
+    const sourceText = [String(body.sourceText || '').trim(), inputs.sourceText].filter(Boolean).join('\n\n');
+    if (sourceText.length > 120000) throw presentationInputError('El material supera 120 000 caracteres. Reduce el texto o los documentos.');
+    const slideCount = Number(body.slideCount || 8);
+    if (!Number.isInteger(slideCount) || slideCount < 3 || slideCount > 20) throw presentationInputError('Elige entre 3 y 20 diapositivas.');
+    let formats;
+    try { formats = typeof body.formats === 'string' ? JSON.parse(body.formats) : body.formats; } catch { /* validated below */ }
+    if (!Array.isArray(formats) || !formats.length || formats.some(format => !['pptx', 'pdf', 'png'].includes(format))) throw presentationInputError('Selecciona al menos un formato de descarga.', 'PRESENTATION_FORMAT_REQUIRED');
+    const enabled = value => value === true || value === 'true';
+    const result = await generatePresentation({
+      topic: topic || 'Presentación basada en documentos', sourceText, slideCount,
+      language: body.language === 'en' ? 'en' : 'es',
+      style: ['corporate', 'editorial', 'dark'].includes(body.style) ? body.style : 'corporate',
+      branding: body.branding === 'minimal' ? 'minimal' : 'firm',
+      includeVisuals: enabled(body.includeVisuals), includeImage: enabled(body.includeImage), webSearch: enabled(body.webSearch),
+      formats, documentNames: inputs.documentNames, supportImages: inputs.supportImages
+    });
     const record = { ...result, createdBy: req.cmsUser.email };
     store.presentations = [record, ...(store.presentations || [])].slice(0, 100);
-    audit('presentation.create', req.cmsUser, { presentationId: record.id, slideCount: record.slideCount, aiUsed: record.aiUsed, model: record.model });
+    audit('presentation.create', req.cmsUser, { presentationId: record.id, slideCount: record.slideCount, aiUsed: record.aiUsed, model: record.model, brandProfile: record.brandProfile, documentCount: record.documentNames.length });
     writeStore();
     res.status(201).json({ presentation: publicPresentationItem(record) });
   } catch (error) {
-    console.error('[presentation-agent] generation failed', error);
-    res.status(500).json({ error: 'PRESENTATION_GENERATION_FAILED', detail: error.message });
+    console.error('[presentation-agent] generation failed', error.code || error.message);
+    res.status(error.status || 500).json({ error: error.code || 'PRESENTATION_GENERATION_FAILED', detail: error.message });
+  } finally {
+    await cleanupPresentationInputs(req.files);
   }
 });
 
@@ -1038,6 +1085,7 @@ app.get('/api/cms/presentations/:id/file/:kind', requireAuth, async (req, res, n
   if (kind === 'pptx') { file = item.files?.pptx; contentType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'; }
   if (kind === 'pdf') { file = item.files?.pdf; contentType = 'application/pdf'; }
   if (kind === 'artwork') { file = item.files?.artwork; contentType = 'image/png'; }
+  if (kind === 'images') { file = item.files?.imagesZip; contentType = 'application/zip'; }
   if (kind === 'png') {
     const index = Number.parseInt(req.query.slide, 10);
     file = Number.isInteger(index) ? item.files?.images?.[index] : null;

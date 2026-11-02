@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import http from 'node:http';
+import path from 'node:path';
+import {pathToFileURL} from 'node:url';
+const root=process.cwd();
+const {createRequire}=await import('node:module');const require=createRequire(path.join(root,'package.json'));
+const JSZip=require('jszip');const {PDFDocument,StandardFonts}=require('pdf-lib');const sharp=require('sharp');
+const inputs=await import(pathToFileURL(path.join(root,'server/presentation-inputs.mjs')));
+const out=await fs.mkdtemp('/tmp/ej-presentations-check-');
+const fixture='Expresion Juridica Consultores. Proceso: diagnostico, estrategia y seguimiento. Material publico de prueba.';
+await fs.writeFile(`${out}/insumo.txt`,fixture);
+const pdf=await PDFDocument.create(); const font=await pdf.embedFont(StandardFonts.Helvetica); pdf.addPage().drawText(fixture,{x:40,y:700,size:10,font}); await fs.writeFile(`${out}/insumo.pdf`,await pdf.save());
+const docx=new JSZip();docx.file('[Content_Types].xml','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');docx.file('_rels/.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');docx.file('word/document.xml',`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>${fixture}</w:t></w:r></w:p></w:body></w:document>`);await fs.writeFile(`${out}/insumo.docx`,await docx.generateAsync({type:'nodebuffer'}));
+const image=await sharp({create:{width:900,height:600,channels:3,background:'#D9BC88'}}).png().toBuffer(); await fs.writeFile(`${out}/apoyo.png`,image);
+const files=async names=>Promise.all(names.map(async name=>({path:`${out}/${name}`,originalname:name,size:(await fs.stat(`${out}/${name}`)).size})));
+const prepared=await inputs.preparePresentationInputs({documents:await files(['insumo.txt','insumo.pdf','insumo.docx']),supportImages:await files(['apoyo.png'])});
+assert.equal(prepared.documentNames.length,3); assert.equal(prepared.supportImages.length,1); assert.match(prepared.sourceText,/diagnostico/);
+const calls=[];
+const server=http.createServer(async(req,res)=>{let raw='';for await(const part of req)raw+=part;const body=JSON.parse(raw);calls.push({url:req.url,body});res.setHeader('content-type','application/json');if(req.url==='/responses'){
+const count=JSON.parse(body.input).slideCount;
+const slides=Array.from({length:count},(_,i)=>({kind:i===0?'title':i===count-1?'closing':'content',eyebrow:'EXPRESIÓN JURÍDICA',title:i===0?'Una estrategia jurídica clara':i===count-1?'Conversemos sobre tu proyecto':`De la consulta a la acción ${i}`,body:i===0?'Asesoría para tomar decisiones con información y un plan definido.':'Diagnóstico, estrategia y seguimiento: un proceso de trabajo que permite ordenar prioridades.',bullets:i===0?[]:['Escuchar los objetivos y revisar el contexto.','Definir acciones y dar seguimiento.','Comunicar avances con claridad.'],visual:{type:i===1?'process':i===0||i===count-1?'none':'image',labels:i===1?['Diagnóstico','Estrategia','Seguimiento']:[],values:[]}}));
+res.end(JSON.stringify({model:'gpt-6.1-sol',status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({title:'Una estrategia jurídica clara',subtitle:'Presentación institucional',slides}),annotations:body.tools?[{type:'url_citation',title:'Fuente de prueba',url:'https://example.com/source'}]:[]}]}]}));
+}else if(req.url==='/images/generations')res.end(JSON.stringify({data:[{b64_json:image.toString('base64')}]}));else{res.statusCode=404;res.end('{}');}});
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+process.env.CMS_DATA_SCOPE='presentation-check';process.env.OPENAI_API_KEY='test-placeholder';process.env.OPENAI_BASE_URL=`http://127.0.0.1:${server.address().port}`;
+for(const key of ['REPLIT_DEPLOYMENT_URL','REPLIT_OBJECT_STORAGE_BUCKET_ID','DEFAULT_OBJECT_STORAGE_BUCKET_ID'])delete process.env[key];
+try{
+const {generatePresentation}=await import(pathToFileURL(path.join(root,'server/presentation-generator.mjs')));
+const a=await generatePresentation({topic:fixture,sourceText:prepared.sourceText,slideCount:3,supportImages:prepared.supportImages,includeImage:true,includeVisuals:true,formats:['pptx','pdf','png']});
+assert.equal(a.generatedImageCount,0,'Uploaded image must take precedence over image generation');assert.equal(calls.length,1);assert.equal(a.brandProfile,'ej-manual-2026');
+const ppt=await JSZip.loadAsync(await fs.readFile(path.join(root,a.files.pptx.localPath)));
+const xml=await ppt.file('ppt/presentation.xml').async('string');assert.match(xml,/embeddedFontLst/);assert.match(xml,/embedTrueTypeFonts="1"/);assert.equal(Object.keys(ppt.files).filter(n=>/fonts\/ej-\d.fntdata$/.test(n)).length,2);
+const slide=await ppt.file('ppt/slides/slide2.xml').async('string');assert.match(slide,/Bahnschrift Light/);assert.match(slide,/Libre Caslon Text/);assert.match(slide,/D9BC88/);assert.match(slide,/141A3A/);assert.match(slide,/Diagnóstico/);
+const zip=await JSZip.loadAsync(await fs.readFile(path.join(root,a.files.imagesZip.localPath)));assert.equal(Object.keys(zip.files).filter(n=>n.endsWith('.png')).length,3);
+for(const kind of ['pptx','pdf'])await fs.copyFile(path.join(root,a.files[kind].localPath),`${out}/ej-brand.${kind}`);
+for(let i=0;i<3;i++)await fs.copyFile(path.join(root,a.files.images[i].localPath),`${out}/slide-${i+1}.png`);
+const b=await generatePresentation({topic:fixture,slideCount:8,includeImage:true,webSearch:true,formats:['pdf']});assert.equal(b.generatedImageCount,4);assert.equal(b.files.pptx,null);assert.equal(b.files.imagesZip,null);assert.equal(b.sources.length,1);assert.equal(calls.filter(c=>c.url==='/images/generations').length,4);assert(calls.filter(c=>c.url==='/responses')[1].body.tools[0].type==='web_search');assert(calls.filter(c=>c.url==='/images/generations').every(c=>c.body.model==='gpt-image-2'));
+const c=await generatePresentation({topic:fixture,slideCount:3,includeVisuals:false,includeImage:true,formats:['png'],branding:'minimal',style:'editorial'});assert.equal(c.generatedImageCount,0);assert.equal(c.files.pptx,null);assert.equal(c.files.pdf,null);assert(c.files.imagesZip);assert.equal(c.outline.slides[1].visual.type,'none');
+console.log(JSON.stringify({passed:true,documents:'TXT/PDF/DOCX',uploadedImageFirst:true,aiImagesCappedAt:4,webSources:true,formats:true,embeddedFonts:2,slides:a.slideCount,outputs:out}));
+}finally{server.close();}

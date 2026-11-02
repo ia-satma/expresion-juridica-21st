@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex,nofollow" />
     <title>CMS · Expresión Jurídica</title>
-    <link rel="stylesheet" href="/admin/admin.css" />
+    <link rel="stylesheet" href="/admin/admin.css?v=20261102-ej-brand" />
   </head>
   <body>
     <div id="app" class="app-shell" data-state="booting">
@@ -105,28 +105,42 @@
         </section>
 
         <section id="presentations-view" class="content-view" hidden>
-          <div class="view-heading"><div><p class="eyebrow">Agente editorial</p><h1>Presentaciones IA</h1><p>Escribe un tema, agrega contexto si lo tienes y recibe una presentación lista para revisar en PPTX, PDF e imágenes.</p></div></div>
-          <div id="presentation-config" class="panel presentation-config" role="status">Comprobando conexión de IA…</div>
+          <div class="view-heading"><div><p class="eyebrow">Expresión Jurídica Consultores</p><h1>Presentaciones IA</h1><p>Del tema a las diapositivas, con la identidad de la firma en cada página.</p></div></div>
+          <div id="presentation-config" class="presentation-config" role="status">Comprobando conexión de IA…</div>
           <div class="presentation-layout">
             <form id="presentation-form" class="panel presentation-form">
-              <div class="panel-heading"><div><p class="eyebrow">Nueva presentación</p><h2>Describe lo que necesitas</h2></div></div>
-              <div class="settings-fields">
-                <label>Tema o título<textarea id="presentation-topic" rows="3" required minlength="6" placeholder="Ejemplo: propuesta de servicios para una empresa de energía"></textarea></label>
-                <p class="settings-help">El agente organiza la información y evita inventar datos. Revisa el contenido antes de compartirlo.</p>
-                <label>Contexto o material de apoyo <span class="field-optional">Opcional</span><textarea id="presentation-source" rows="7" placeholder="Pega aquí notas, objetivos, cifras o el texto de referencia."></textarea></label>
-                <div class="settings-three"><label>Número de diapositivas<select id="presentation-slide-count"><option value="3">3 · breve</option><option value="5">5 · ejecutiva</option><option value="6" selected>6 · completa</option><option value="8">8 · detallada</option><option value="10">10 · extensa</option></select></label><label>Idioma<select id="presentation-language"><option value="es" selected>Español</option><option value="en">English</option></select></label><label>Estilo<select id="presentation-style"><option value="editorial" selected>Editorial</option><option value="auto">Alternado</option><option value="dark">Oscuro</option></select></label></div>
-                <label>Color de acento<input id="presentation-accent" type="color" value="#A98245" /></label>
-                <label class="presentation-image-option"><input id="presentation-include-image" type="checkbox" checked /> Incluir imagen de portada con GPT Image 2</label>
-                <div class="presentation-form-actions"><button id="generate-presentation" class="button button-primary" type="submit">Generar presentación</button><span id="presentation-status" class="field-status" role="status"></span></div>
+              <div class="presentation-grid presentation-grid-two">
+                <div class="presentation-field"><label for="presentation-topic">Tema / instrucciones</label><textarea id="presentation-topic" rows="4" maxlength="10000" placeholder="Ej. Presentación de servicios jurídicos para empresas, dirigida a sus equipos directivos…" aria-describedby="presentation-topic-help"></textarea><small id="presentation-topic-help">Puedes dejarlo vacío si subes documentos.</small></div>
+                <div class="presentation-field"><label for="presentation-documents">Documentos de insumo <span>(opcional)</span></label><label class="button button-secondary presentation-upload" for="presentation-documents"><span aria-hidden="true">↥</span> Subir documentos</label><input id="presentation-documents" class="presentation-file-input" type="file" multiple accept=".pdf,.docx,.txt,.md" /><small>Hasta 20 archivos, máximo 100 MB por archivo. PDF con texto, DOCX, TXT o Markdown; 200 MB en total.</small><ul id="presentation-documents-list" class="presentation-file-list" aria-live="polite"></ul></div>
               </div>
+              <details class="presentation-notes"><summary>Pegar material de apoyo</summary><label for="presentation-source" class="sr-only">Material de apoyo adicional</label><textarea id="presentation-source" rows="4" maxlength="120000" placeholder="Notas, objetivos, cifras o texto de referencia…"></textarea></details>
+              <div class="presentation-grid presentation-grid-three">
+                <div class="presentation-field"><label for="presentation-slide-count">Número de diapositivas</label><input id="presentation-slide-count" type="number" min="3" max="20" value="8" required /></div>
+                <div class="presentation-field"><label for="presentation-language">Idioma</label><select id="presentation-language"><option value="es">Español</option><option value="en">English</option></select></div>
+                <div class="presentation-field"><label for="presentation-style">Plantilla</label><select id="presentation-style"><option value="corporate">Corporativa EJ</option><option value="editorial">Editorial EJ</option><option value="dark">Azul institucional</option></select></div>
+              </div>
+              <div class="presentation-grid presentation-grid-two">
+                <div class="presentation-field"><label for="presentation-branding">Branding</label><select id="presentation-branding"><option value="firm">Expresión Jurídica (logo y colores de la firma)</option><option value="minimal">Paleta y tipografías EJ, sin logotipo</option></select><small class="presentation-brand-note"><span class="presentation-swatches" aria-hidden="true"><i></i><i></i><i></i></span>Libre Caslon Italic + Bahnschrift Light</small></div>
+                <fieldset class="presentation-formats"><legend>Formatos de descarga</legend><label><input type="checkbox" name="presentation-format" value="pptx" checked /> PowerPoint (.pptx) — editable</label><label><input type="checkbox" name="presentation-format" value="pdf" checked /> PDF</label><label><input type="checkbox" name="presentation-format" value="png" checked /> Imágenes (.png por diapositiva, en ZIP)</label></fieldset>
+              </div>
+              <div class="presentation-visuals">
+                <h2>Elementos visuales</h2>
+                <label class="presentation-switch-row"><span><strong>Incluir gráficas, diagramas e imágenes</strong><small>La IA los propone cuando el contenido lo amerita. Las gráficas y los diagramas no consumen créditos de imágenes.</small></span><input id="presentation-include-visuals" type="checkbox" role="switch" checked /><span class="presentation-switch" aria-hidden="true"></span></label>
+                <label class="presentation-switch-row"><span><strong>Ilustrar con imágenes generadas por IA</strong><small>Genera hasta 4 imágenes por presentación con GPT Image 2. <em>Usa créditos de OpenAI.</em></small></span><input id="presentation-include-image" type="checkbox" role="switch" /><span class="presentation-switch" aria-hidden="true"></span></label>
+                <label class="presentation-switch-row"><span><strong>Buscar información en la web</strong><small>La IA consulta fuentes en internet para enriquecer la presentación. Si está apagado, usa solo tu material. <em>Usa créditos de OpenAI.</em></small></span><input id="presentation-web-search" type="checkbox" role="switch" /><span class="presentation-switch" aria-hidden="true"></span></label>
+              </div>
+              <div class="presentation-field presentation-support"><label for="presentation-support-images">Imágenes de apoyo <span>(opcional) — se usan antes que las generadas por IA</span></label><label class="button button-secondary presentation-upload" for="presentation-support-images"><span aria-hidden="true">▧</span> Subir imágenes</label><input id="presentation-support-images" class="presentation-file-input" type="file" multiple accept=".png,.jpg,.jpeg,.webp" /><small>Hasta 10 imágenes PNG, JPG o WebP; se colocan en orden, una por diapositiva.</small><ul id="presentation-support-list" class="presentation-file-list" aria-live="polite"></ul></div>
+              <p id="presentation-error" class="presentation-error" role="alert" hidden></p>
+              <div class="presentation-form-actions"><button id="generate-presentation" class="button button-primary" type="submit">Generar presentación</button><span class="presentation-duration">El texto suele estar listo en un minuto; las imágenes pueden requerir más tiempo.</span><span id="presentation-status" class="field-status" role="status" aria-live="polite"></span></div>
             </form>
             <section id="presentation-result" class="panel presentation-result" hidden>
               <div class="panel-heading"><div><p class="eyebrow">Resultado</p><h2 id="presentation-result-title">Presentación lista</h2><p id="presentation-result-meta" class="settings-help"></p></div></div>
-              <div class="presentation-result-actions"><a id="presentation-download-pptx" class="button button-primary" download>Descargar PPTX</a><a id="presentation-download-pdf" class="button button-secondary" download>Descargar PDF</a><a id="presentation-download-artwork" class="button button-secondary" download hidden>Descargar imagen IA</a></div>
+              <div class="presentation-result-actions"><a id="presentation-download-pptx" class="button button-primary" download>Descargar PPTX</a><a id="presentation-download-pdf" class="button button-secondary" download>Descargar PDF</a><a id="presentation-download-images" class="button button-secondary" download hidden>Descargar PNG (ZIP)</a><a id="presentation-download-artwork" class="button button-secondary" download hidden>Descargar imagen IA</a></div>
               <div id="presentation-result-gallery" class="presentation-gallery"></div>
+              <div id="presentation-sources" class="presentation-sources" hidden></div>
             </section>
           </div>
-          <section class="panel presentation-history"><div class="panel-heading"><div><p class="eyebrow">Historial privado</p><h2>Presentaciones guardadas</h2><p class="settings-help">Cada generación queda asociada a tu cuenta y se conserva en App Storage.</p></div><button id="refresh-presentations" class="text-action" type="button">Actualizar</button></div><div id="presentations-list" class="presentations-list"></div></section>
+          <section class="panel presentation-history"><div class="panel-heading"><div><p class="eyebrow">Historial del CMS</p><h2>Presentaciones guardadas</h2><p class="settings-help">Archivos disponibles para los usuarios autorizados del CMS.</p></div><button id="refresh-presentations" class="text-action" type="button">Actualizar</button></div><div id="presentations-list" class="presentations-list"></div></section>
         </section>
 
         <section id="media-view" class="content-view" hidden>
@@ -169,6 +183,6 @@
       </main>
     </div>
     <div id="toast-region" class="toast-region" aria-live="polite"></div>
-    <script type="module" src="/admin/app.js"></script>
+    <script type="module" src="/admin/app.js?v=20261102-ej-brand"></script>
   </body>
 </html>

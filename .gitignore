@@ -8,3 +8,6 @@ storage/media/*
 .env
 .env.*
 !.env.example
+# Private font binaries supplied for server rendering and document embedding.
+server/assets/ej-brand/*.ttf
+server/assets/ej-brand/*.eot
