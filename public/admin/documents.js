@@ -17,7 +17,7 @@ export function createDocumentStudio({ api, state, notify, escapeHtml: h, format
     $('#documents-editor-title').readOnly = studio.busy || !canEdit();
   }
   function dirty() { studio.dirty = true; sync(); }
-  const messages = { STUDIO_JOB_INTERRUPTED: 'La generación se interrumpió. Puedes volver a intentarlo.', OPENAI_API_KEY_MISSING: 'Falta OPENAI_API_KEY en los Secrets de Replit.', OPENAI_OUTPUT_INCOMPLETE: 'Sol no terminó el documento. Intenta dividir el texto o reducir las instrucciones.', DOCUMENT_VERSION_CHANGED: 'El documento cambió en otra edición. Actualiza el historial y abre la versión reciente.', STUDIO_STORAGE_UNAVAILABLE: 'No se pudo acceder al almacenamiento. Tu texto sigue en el editor; vuelve a intentar guardar.' };
+  const messages = { CSRF_INVALID: 'La sesión se actualizó en otra pestaña. Tu texto permanece en el editor.', STUDIO_JOB_INTERRUPTED: 'La generación se interrumpió. Puedes volver a intentarlo.', OPENAI_API_KEY_MISSING: 'Falta OPENAI_API_KEY en los Secrets de Replit.', OPENAI_OUTPUT_INCOMPLETE: 'Sol no terminó el documento. Intenta dividir el texto o reducir las instrucciones.', DOCUMENT_VERSION_CHANGED: 'El documento cambió en otra edición. Actualiza el historial y abre la versión reciente.', STUDIO_STORAGE_UNAVAILABLE: 'No se pudo acceder al almacenamiento. Tu texto sigue en el editor; vuelve a intentar guardar.' };
   const explain = failure => messages[failure.detail] || messages[failure.message] || failure.detail || 'No se pudo preparar el documento. Vuelve a intentarlo.';
   async function open(item) {
     if (studio.busy) return;

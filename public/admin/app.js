@@ -1,5 +1,6 @@
 import { createSocialStudio } from "./social.js?v=20261102-studio";
 import { createDocumentStudio } from "./documents.js?v=20261102-studio";
+import { currentCmsCsrf } from "./csrf.js?v=20261102-studio2";
 const state = {
   user: null,
   csrf: null,
@@ -44,7 +45,8 @@ function notify(message, tone = 'default') {
 
 async function api(url, options = {}) {
   const headers = new Headers(options.headers || {});
-  if (state.csrf && options.method && options.method !== 'GET') headers.set('x-cms-csrf', state.csrf);
+  const csrf = currentCmsCsrf(document.cookie, state.csrf);
+  if (csrf && options.method && options.method !== 'GET') headers.set('x-cms-csrf', csrf);
   let body = options.body;
   if (body && !(body instanceof FormData) && typeof body === 'object') {
     headers.set('Content-Type', 'application/json');

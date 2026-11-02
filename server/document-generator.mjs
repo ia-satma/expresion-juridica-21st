@@ -205,7 +205,9 @@ export async function generateDocument({ text, title = '', mode = 'preserve', in
       else nodes.push(paragraph(block.text));
     }
     title = clean(title || data.title).slice(0, 180);
-    if (title && !(nodes[0]?.type === 'heading' && nodes[0]?.attrs?.level === 1)) nodes.unshift({ type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: title }] });
+    const firstHeading = (nodes[0]?.content || []).map(run => run.text || '').join('').trim();
+    if (title && !(nodes[0]?.type === 'heading' && nodes[0]?.attrs?.level === 1 && firstHeading === title)) nodes.unshift({ type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: title }] });
+    nodes.forEach((node, index) => { if (index > 0 && node.type === 'heading' && node.attrs.level === 1) node.attrs.level = 2; });
     document = normalizeDocument({ type: 'doc', content: nodes }); aiUsed = true; model = result.model || presentationModels().textModel;
   }
   return renderDocument({ id: crypto.randomUUID(), title: title.trim() || 'Documento de Expresión Jurídica', document, sourceMode: mode, aiUsed, model, createdAt: new Date().toISOString() }, progress);
