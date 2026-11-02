@@ -13,6 +13,7 @@ import { preparePresentationInputs, cleanupPresentationInputs, MAX_PRESENTATION_
 import { registerSocialRoutes } from './social-routes.mjs';
 import { registerDocumentRoutes } from './document-routes.mjs';
 import { repairPresentationImageSizing } from './presentation-images.mjs';
+import { BRAND_CONTACT, canonicalBrandEmail, normalizePublicBrandCopy } from './brand-contact.mjs';
 import { authSecurityPolicy, checkLoginAttempt, recordLoginFailure, recordLoginSuccess } from './auth-security.mjs';
 
 const ROOT = process.cwd();
@@ -50,7 +51,7 @@ const defaultSettings = () => ({
   geo: {
     businessName: 'Expresión Jurídica Consultores',
     phone: '',
-    email: 'consultoria@expresionjuridica.com',
+    email: BRAND_CONTACT.email,
     street: 'Boulevard Europa No. 33, Fracc. Montemagno',
     locality: 'Xalapa',
     region: 'Veracruz',
@@ -205,7 +206,7 @@ function publicSettings() {
   const { siteName, siteDescription, defaultLocale, canonicalBaseUrl, indexingEnabled, searchConsoleVerification, analytics, cookie, geo, navigation } = store.settings;
   return {
     siteName,
-    siteDescription,
+    siteDescription: normalizePublicBrandCopy(siteDescription),
     defaultLocale,
     canonicalBaseUrl,
     indexingEnabled: Boolean(indexingEnabled),
@@ -215,7 +216,7 @@ function publicSettings() {
       measurementId: String(analytics?.measurementId || '')
     },
     cookie: { ...cookie },
-    geo: { ...geo },
+    geo: { ...geo, email: canonicalBrandEmail(geo?.email) },
     navigation: { visibility: { ...(navigation?.visibility || {}) } }
   };
 }
@@ -425,7 +426,7 @@ function injectSiteMetadata($, page, preview = false) {
     '@type': 'LegalService',
     name: geo.businessName || settings.siteName,
     url: base,
-    description: settings.siteDescription,
+    description: normalizePublicBrandCopy(settings.siteDescription),
     areaServed: { '@type': 'Country', name: 'México' },
     address: {
       '@type': 'PostalAddress',
@@ -435,7 +436,7 @@ function injectSiteMetadata($, page, preview = false) {
       addressCountry: geo.country || 'MX'
     }
   };
-  if (geo.email) schema.email = geo.email;
+  if (geo.email) schema.email = canonicalBrandEmail(geo.email);
   if (geo.phone) schema.telephone = geo.phone;
   if (geo.latitude && geo.longitude) schema.geo = { '@type': 'GeoCoordinates', latitude: geo.latitude, longitude: geo.longitude };
   $('script[type="application/ld+json"][data-cms-schema="true"]').remove();
@@ -448,7 +449,7 @@ function renderHtml(file, preview = false) {
   const { $, fields } = inventoryHtml(raw, page);
   const overrides = preview ? store.draftOverrides : store.publishedOverrides;
   for (const field of fields) {
-    if (Object.prototype.hasOwnProperty.call(overrides, field.id)) applyField($, field, overrides[field.id]);
+    if (Object.prototype.hasOwnProperty.call(overrides, field.id)) applyField($, field, normalizePublicBrandCopy(overrides[field.id]));
   }
   injectSiteMetadata($, page, preview);
   applyNavigation($);
@@ -749,7 +750,8 @@ app.get('/api/cms/public', (req, res) => {
     const map = {};
     for (const field of inventory.fields) {
       if (field.page !== page || !Object.prototype.hasOwnProperty.call(overrides, field.id)) continue;
-      map[field.id] = field.attribute === 'html' ? sanitizeMarkup(overrides[field.id]) : sanitizeAttribute(field.attribute, overrides[field.id]);
+      const value = normalizePublicBrandCopy(overrides[field.id]);
+      map[field.id] = field.attribute === 'html' ? sanitizeMarkup(value) : sanitizeAttribute(field.attribute, value);
     }
     res.set('Cache-Control', 'no-store').json({ page, preview, overrides: map, settings: publicSettings() });
   }).catch(() => res.status(500).json({ error: 'AUTH_STATE_ERROR' }));
@@ -928,7 +930,7 @@ app.get('/api/cms/activity', requireAuth, (_req, res) => {
 });
 
 app.get('/api/cms/signatures', requireAuth, (_req, res) => {
-  res.json({ signatures: store.signatures });
+  res.json({ signatures: store.signatures.map(signature => ({ ...signature, email: canonicalBrandEmail(signature.email) })) });
 });
 
 app.post('/api/cms/signatures', requireAuth, requireEditor, requireCsrf, (req, res) => {
@@ -939,7 +941,7 @@ app.post('/api/cms/signatures', requireAuth, requireEditor, requireCsrf, (req, r
     name: clean(input.name, 160),
     role: clean(input.role, 160),
     phone: clean(input.phone, 80),
-    email: clean(input.email, 254).toLowerCase(),
+    email: canonicalBrandEmail(clean(input.email, 254).toLowerCase()),
     address1: clean(input.address1, 180),
     address2: clean(input.address2, 180),
     baseUrl: clean(input.baseUrl, 500),
@@ -962,6 +964,7 @@ app.patch('/api/cms/signatures/:id', requireAuth, requireEditor, requireCsrf, (r
   for (const [key, max] of Object.entries({ name: 160, role: 160, phone: 80, email: 254, address1: 180, address2: 180, baseUrl: 500 })) {
     if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) signature[key] = clean(req.body[key], max);
   }
+  signature.email = canonicalBrandEmail(signature.email);
   if (!signature.name || !/^\S+@\S+\.\S+$/.test(signature.email)) return res.status(422).json({ error: 'SIGNATURE_FIELDS_INVALID' });
   signature.updatedAt = now();
   audit('signature.update', req.cmsUser, { signatureId: signature.id });
@@ -1281,13 +1284,13 @@ app.get('/llms.txt', (_req, res) => {
   const lines = [
     `# ${store.settings.siteName}`,
     '',
-    store.settings.siteDescription,
+    normalizePublicBrandCopy(store.settings.siteDescription),
     '',
     '## Páginas',
     ...inventory.pages.map((page) => `- [${page.title}](${absoluteSiteUrl(page.page)})`),
     '',
     '## Contacto',
-    `- ${store.settings.geo?.email || ''}`,
+    `- ${canonicalBrandEmail(store.settings.geo?.email) || ''}`,
     `- ${store.settings.geo?.street || ''}, ${store.settings.geo?.locality || ''}, ${store.settings.geo?.region || ''}`
   ];
   res.type('text/plain').send(`${lines.join('\n')}\n`);

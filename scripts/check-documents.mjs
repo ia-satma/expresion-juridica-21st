@@ -16,6 +16,9 @@ const mock = http.createServer(async (req, res) => {
   res.end(JSON.stringify({ model: 'gpt-6.1-sol', status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({ title: input.title, blocks: [{ type: 'heading', level: 1, text: 'Objetivo', items: [] }, { type: 'paragraph', level: 1, text: input.text, items: [] }, { type: 'bullets', level: 1, text: '', items: ['Escuchar el contexto', 'Acordar los siguientes pasos'] }] }) }] }] }));
 }); await new Promise(resolve => mock.listen(0, '127.0.0.1', resolve));
 process.env.CMS_DATA_SCOPE = `document-check-${Date.now()}`; process.env.OPENAI_API_KEY = 'test-placeholder'; process.env.OPENAI_BASE_URL = `http://127.0.0.1:${mock.address().port}`;
+// Isolate the test from legacy-media migration, including prior test scopes.
+const testMedia = path.join(root, 'storage/media', process.env.CMS_DATA_SCOPE);
+await fs.mkdir(testMedia, { recursive: true }); await fs.writeFile(path.join(testMedia, '.test-only'), 'isolated QA scope');
 for (const key of ['REPL_ID', 'REPLIT_DEPLOYMENT_URL', 'REPLIT_DEV_DOMAIN']) delete process.env[key];
 const { registerDocumentRoutes } = await import('../server/document-routes.mjs');
 const requireAuth = (req, res, next) => { if (!req.headers.cookie?.includes('qa_session=studio')) return res.status(401).json({ error: 'AUTH_REQUIRED' }); req.cmsUser = { id: req.headers['x-qa-user'] || 'owner-qa', email: 'preview@example.test', role: 'owner' }; next(); };
@@ -49,6 +52,9 @@ try {
   await fs.writeFile(path.join(output, 'letterhead.docx'), docxBytes); await fs.writeFile(path.join(output, 'letterhead.pdf'), pdfBytes);
   const zip = await JSZip.loadAsync(docxBytes), documentXml = await zip.file('word/document.xml').async('string');
   assert.match(documentXml, /w:pStyle w:val="Title"/); assert.match(documentXml, /A &amp; B &lt; C/); assert.match(documentXml, /w:headerReference/); assert.equal(Object.keys(zip.files).filter(name => name.endsWith('.odttf')).length, 2);
+  const paragraphProperties = [...documentXml.matchAll(/<w:pPr>(.*?)<\/w:pPr>/g)].map(match => match[1]);
+  assert(paragraphProperties.filter(value => value.includes('w:pStyle w:val="Normal"')).every(value => value.includes('w:jc w:val="both"')));
+  assert(paragraphProperties.filter(value => value.includes('w:pStyle w:val="Title"')).every(value => value.includes('w:jc w:val="left"')));
   assert.match(await zip.file('word/header1.xml').async('string'), /behindDoc="1"/); assert.match(await zip.file('word/fontTable.xml').async('string'), /embedItalic/);
   const text = (await mammoth.extractRawText({ buffer: docxBytes })).value; for (const line of source.split('\n').filter(Boolean)) assert(text.includes(line), 'Preserve every supplied line'); assert(!text.includes('Lorem ipsum'));
   assert.equal((await PDFDocument.load(pdfBytes)).getPageCount(), result.pageCount);
@@ -60,7 +66,9 @@ try {
   const updated = await json(`/api/cms/documents/${result.id}`, { method: 'PATCH', body: JSON.stringify({ document: result.document, version: result.updatedAt }) }, replicaBase); assert.equal(updated.response.status, 202); const edited = await finish(updated.data.job.id, replicaBase); assert.equal(calls.length, 0); assert.equal(edited.document.content.at(-1).content[0].text, 'Edición persistente sin consumo de IA.');
   assert.equal((await json(`/api/cms/documents/${result.id}`, { method: 'PATCH', body: JSON.stringify({ document: result.document, version: 'stale' }) })).response.status, 409);
   const ai = await json('/api/cms/documents/generate', { method: 'POST', body: JSON.stringify({ title: 'Documento organizado', text: 'Primero escuchar. Luego definir el alcance y dar seguimiento.', mode: 'organize' }) }); const organized = await finish(ai.data.job.id); assert.equal(organized.model, 'gpt-6.1-sol'); assert.equal(organized.document.content[0].content[0].text, 'Documento organizado'); assert.equal(organized.document.content[1].attrs.level, 2); assert.equal(organized.document.content.at(-1).type, 'bulletList'); assert.equal(calls.length, 1); assert.match(calls[0].instructions, /letterhead|membrete/);
-  const normalizedZip = await JSZip.loadAsync(await (await fetch(base + organized.files.docx, { headers })).arrayBuffer()); assert.match(await normalizedZip.file('word/document.xml').async('string'), /w:numPr/);
+  const normalizedZip = await JSZip.loadAsync(await (await fetch(base + organized.files.docx, { headers })).arrayBuffer()), normalizedXml = await normalizedZip.file('word/document.xml').async('string'); assert.match(normalizedXml, /w:numPr/);
+  assert([...normalizedXml.matchAll(/<w:pPr>(.*?)<\/w:pPr>/g)].filter(match => /w:numPr|w:pStyle w:val="Heading/.test(match[1])).every(match => match[1].includes('w:jc w:val="left"')));
+  assert.match(calls[0].instructions, /Official institutional email: Consultoria@expresionjuridica\.com/);
   console.log(JSON.stringify({ passed: true, fullTextPreserved: true, editableDocx: true, embeddedFonts: 2, pdfPages: result.pageCount, brandOnEveryPage: true, durableHistoryAndJobs: true, editsWithoutAi: true, optionalSol: true, output }));
   if (process.env.EJ_DOCUMENT_PREVIEW === '1') console.log(`PREVIEW ${base}/admin/#documents`);
 } finally { replica?.close(); if (process.env.EJ_DOCUMENT_PREVIEW !== '1') { server.close(); mock.close(); } }

@@ -12,6 +12,7 @@ from pypdf.generic import ContentStream, NameObject
 parser = argparse.ArgumentParser()
 parser.add_argument("source")
 parser.add_argument("--output", default="server/assets/ej-brand")
+parser.add_argument("--node", default="node")
 args = parser.parse_args()
 directory = pathlib.Path(args.output)
 directory.mkdir(parents=True, exist_ok=True)
@@ -27,6 +28,10 @@ for operands, operator in stream.operations:
         sample = float(operands[5]) < 650
     if sample and operator in (b"Tj", b"TJ", b"'", b'"'):
         continue
+    if operator in (b"Tj", b"TJ"):
+        fragments = operands[0] if operator == b"TJ" else operands
+        if "@" in "".join(value for value in fragments if isinstance(value, str)):
+            continue
     operations.append((operands, operator))
 stream.operations = operations
 page[NameObject("/Contents")] = stream
@@ -40,5 +45,8 @@ target = directory / "letterhead.pdf"
 with target.open("wb") as output:
     writer.write(output)
 assert "Lorem" not in PdfReader(target).pages[0].extract_text()
+subprocess.run([args.node, "scripts/set-letterhead-contact.mjs", str(target)], check=True)
+assert "expresionjuridica@live.com" not in PdfReader(target).pages[0].extract_text()
+assert "Consultoria@expresionjuridica.com" in PdfReader(target).pages[0].extract_text()
 subprocess.run(["pdftoppm", "-f", "1", "-singlefile", "-r", "180", "-png", str(target), str(directory / "letterhead")], check=True)
 print(target)

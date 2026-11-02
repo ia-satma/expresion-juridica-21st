@@ -1,9 +1,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
+import { BRAND_CONTACT } from './brand-contact.mjs';
 
 export const EJ_BRAND = Object.freeze({
   id: 'ej-manual-2026', name: 'Expresión Jurídica · Manual institucional',
+  contactEmail: BRAND_CONTACT.email,
   navy: '#141A3A', night: '#0B0F1E', gold: '#D9BC88', gray: '#DADADA', paper: '#F4F4F4', white: '#FFFFFF',
   headingFont: 'Libre Caslon Text', headingItalic: true, bodyFont: 'Bahnschrift Light', bodyWeight: 300,
   pptHeadingFont: 'Libre Caslon Text', pptBodyFont: 'Bahnschrift Light',

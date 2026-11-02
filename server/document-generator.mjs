@@ -72,7 +72,7 @@ function flatten(document) {
 }
 function blockStyle(block, index) {
   if (block.type === 'heading') return { size: block.level === 1 ? 18 : block.level === 2 ? 14 : 12, font: block.level === 1 ? 'heading' : 'body', bold: block.level > 1, before: index === 0 ? 0 : 14, after: 8, color: block.level === 1 ? '#A5844D' : '#141A3A', wordStyle: block.level === 1 && index === 0 ? 'Title' : `Heading${block.level}` };
-  return { size: 11, font: 'body', before: 0, after: 8, color: '#141A3A', wordStyle: block.quote ? 'Quote' : 'Normal' };
+  return { size: 11, font: 'body', before: 0, after: 8, color: '#141A3A', wordStyle: block.quote ? 'Quote' : 'Normal', justify: !block.listId };
 }
 async function makePdf(document, title) {
   const pdf = await PDFDocument.create(); pdf.registerFontkit(fontkit);
@@ -92,10 +92,10 @@ async function makePdf(document, title) {
     const left = P.left + (block.indent || 0), width = P.width - P.right - left;
     const tokens = block.runs.flatMap(run => run.text.split(/(\n|[\t ]+)/).filter(Boolean).map(text => ({ text: text.replace(/\t/g, '    '), marks: run.marks })));
     if (block.prefix) tokens.unshift({ text: block.prefix, marks: [] });
-    const lines = []; let line = [], used = 0;
+    const lines = [], forcedBreaks = new Set(); let line = [], used = 0;
     const push = () => { while (line.at(-1)?.text.match(/^ +$/)) line.pop(); lines.push(line); line = []; used = 0; };
     for (const token of tokens) {
-      if (token.text === '\n') { push(); continue; }
+      if (token.text === '\n') { push(); forcedBreaks.add(lines.length - 1); continue; }
       if (!used && /^ +$/.test(token.text)) continue;
       const measured = font.widthOfTextAtSize(token.text, style.size);
       if (used && used + measured > width) push();
@@ -110,6 +110,9 @@ async function makePdf(document, title) {
     for (const [row, segments] of lines.entries()) {
       if (y - lineHeight < P.bottom) nextPage();
       let cursor = left;
+      const gaps = segments.reduce((count, segment) => count + (segment.text.match(/ /g) || []).length, 0);
+      const occupied = segments.reduce((sum, segment) => sum + font.widthOfTextAtSize(segment.text, style.size), 0);
+      const extraSpace = style.justify && row < lines.length - 1 && !forcedBreaks.has(row) && gaps ? Math.max(0, width - occupied) / gaps : 0;
       for (const segment of segments) {
         const italic = segment.marks.some(mark => mark.type === 'italic') && style.font !== 'heading';
         const bold = style.bold || segment.marks.some(mark => mark.type === 'bold');
@@ -119,7 +122,7 @@ async function makePdf(document, title) {
         if (bold) page.drawText(segment.text, { x: cursor + .18, y: y - style.size, size: style.size, font, color: ink });
         if (segment.marks.some(mark => ['underline', 'link'].includes(mark.type))) page.drawLine({ start: { x: cursor, y: y - style.size - 1.5 }, end: { x: cursor + advance, y: y - style.size - 1.5 }, thickness: .45, color: ink });
         if (segment.marks.some(mark => mark.type === 'strike')) page.drawLine({ start: { x: cursor, y: y - style.size * .6 }, end: { x: cursor + advance, y: y - style.size * .6 }, thickness: .45, color: ink });
-        cursor += advance;
+        cursor += advance + (segment.text.match(/ /g) || []).length * extraSpace;
       }
       y -= lineHeight;
     }
@@ -140,7 +143,7 @@ async function makeDocx(document, title) {
   const paragraphs = blocks.map((block, index) => {
     const style = blockStyle(block, index);
     if (block.type === 'rule') return '<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="4" w:color="D9BC88"/></w:pBdr></w:pPr></w:p>';
-    return `<w:p><w:pPr><w:pStyle w:val="${style.wordStyle}"/>${block.indent ? `<w:ind w:left="${twips(block.indent)}"/>` : ''}${block.listId ? `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="${block.listId}"/></w:numPr>` : ''}</w:pPr>${block.runs.map(runXml).join('') || '<w:r><w:t></w:t></w:r>'}</w:p>`;
+    return `<w:p><w:pPr><w:pStyle w:val="${style.wordStyle}"/>${block.listId ? `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="${block.listId}"/></w:numPr>` : ''}${block.indent ? `<w:ind w:left="${twips(block.indent)}"/>` : ''}<w:jc w:val="${style.justify ? 'both' : 'left'}"/></w:pPr>${block.runs.map(runXml).join('') || '<w:r><w:t></w:t></w:r>'}</w:p>`;
   }).join('');
   const body = `<w:document xmlns:w="${wordNS}" xmlns:r="${relNS}"><w:body>${paragraphs}<w:sectPr><w:headerReference w:type="default" r:id="rHeader"/><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="${twips(P.top)}" w:right="${twips(P.right)}" w:bottom="${twips(P.bottom)}" w:left="${twips(P.left)}" w:header="0" w:footer="360"/><w:cols w:space="720"/></w:sectPr></w:body></w:document>`;
   const background = `<w:hdr xmlns:w="${wordNS}" xmlns:r="${relNS}" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/></w:pPr><w:r><w:drawing><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="0" behindDoc="1" locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx="7772400" cy="10058400"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/><wp:docPr id="1" name="Hoja membretada EJ" descr="Identidad institucional original sin texto de ejemplo"/><wp:cNvGraphicFramePr/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="letterhead.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rLetterhead"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="7772400" cy="10058400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p></w:hdr>`;
