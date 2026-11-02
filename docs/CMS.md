@@ -41,9 +41,9 @@ El inventario incluye HTML de texto, títulos, metadatos, enlaces, `href`, `src`
 
 ## Agente de presentaciones
 
-`Presentaciones IA` crea una presentación a partir de un tema y notas de apoyo. El agente genera una estructura editable en PPTX, un PDF y una imagen PNG por diapositiva; cada generación queda registrada en `data/cms.json` y sus archivos se guardan en `data/generated-presentations`. Cuando App Storage está conectado, los mismos archivos se suben al prefijo `generated-presentations/` del entorno actual.
+En el menú lateral, `Presentaciones IA` está debajo de `Firmas de correo`. También admite el enlace directo `/admin/#presentations`. Crea una presentación a partir de un tema y notas de apoyo, con contenido de `gpt-6.1-sol` y una imagen de portada opcional de `gpt-image-2`. El resultado incluye PPTX editable, PDF y PNG por diapositiva, además de la imagen de portada por separado. Los archivos se guardan en `data/<entorno>/generated-presentations` y en App Storage cuando está conectado.
 
-Para activar el modelo de OpenAI, agrega `OPENAI_API_KEY` en Secrets. De forma opcional puedes definir `OPENAI_PRESENTATION_MODEL` y `OPENAI_BASE_URL`. Si todavía no hay clave, el CMS genera un esquema local de prueba para validar el flujo, el diseño y las descargas; lo marca claramente como esquema de respaldo y no lo publica automáticamente.
+Para activar OpenAI, agrega `OPENAI_API_KEY` en Secrets de Replit y republica. De forma opcional puedes definir `OPENAI_PRESENTATION_MODEL`, `OPENAI_IMAGE_MODEL` y `OPENAI_BASE_URL`. El panel muestra los modelos configurados. Si todavía no hay clave, permite generar un archivo de prueba marcado sin IA. Si la API falla, muestra el error sin sustituir el modelo solicitado por otro ni presentar una plantilla como contenido de IA.
 
 El acceso al agente requiere una sesión del CMS; generar archivos requiere rol `owner` o `editor`. El historial es privado y las descargas pasan por rutas autenticadas. La revisión humana ocurre antes de compartir el PPTX, PDF o las imágenes.
 

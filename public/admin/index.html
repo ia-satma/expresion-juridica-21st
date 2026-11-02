@@ -106,6 +106,7 @@
 
         <section id="presentations-view" class="content-view" hidden>
           <div class="view-heading"><div><p class="eyebrow">Agente editorial</p><h1>Presentaciones IA</h1><p>Escribe un tema, agrega contexto si lo tienes y recibe una presentación lista para revisar en PPTX, PDF e imágenes.</p></div></div>
+          <div id="presentation-config" class="panel presentation-config" role="status">Comprobando conexión de IA…</div>
           <div class="presentation-layout">
             <form id="presentation-form" class="panel presentation-form">
               <div class="panel-heading"><div><p class="eyebrow">Nueva presentación</p><h2>Describe lo que necesitas</h2></div></div>
@@ -115,12 +116,13 @@
                 <label>Contexto o material de apoyo <span class="field-optional">Opcional</span><textarea id="presentation-source" rows="7" placeholder="Pega aquí notas, objetivos, cifras o el texto de referencia."></textarea></label>
                 <div class="settings-three"><label>Número de diapositivas<select id="presentation-slide-count"><option value="3">3 · breve</option><option value="5">5 · ejecutiva</option><option value="6" selected>6 · completa</option><option value="8">8 · detallada</option><option value="10">10 · extensa</option></select></label><label>Idioma<select id="presentation-language"><option value="es" selected>Español</option><option value="en">English</option></select></label><label>Estilo<select id="presentation-style"><option value="editorial" selected>Editorial</option><option value="auto">Alternado</option><option value="dark">Oscuro</option></select></label></div>
                 <label>Color de acento<input id="presentation-accent" type="color" value="#A98245" /></label>
+                <label class="presentation-image-option"><input id="presentation-include-image" type="checkbox" checked /> Incluir imagen de portada con GPT Image 2</label>
                 <div class="presentation-form-actions"><button id="generate-presentation" class="button button-primary" type="submit">Generar presentación</button><span id="presentation-status" class="field-status" role="status"></span></div>
               </div>
             </form>
             <section id="presentation-result" class="panel presentation-result" hidden>
               <div class="panel-heading"><div><p class="eyebrow">Resultado</p><h2 id="presentation-result-title">Presentación lista</h2><p id="presentation-result-meta" class="settings-help"></p></div></div>
-              <div class="presentation-result-actions"><a id="presentation-download-pptx" class="button button-primary" download>Descargar PPTX</a><a id="presentation-download-pdf" class="button button-secondary" download>Descargar PDF</a></div>
+              <div class="presentation-result-actions"><a id="presentation-download-pptx" class="button button-primary" download>Descargar PPTX</a><a id="presentation-download-pdf" class="button button-secondary" download>Descargar PDF</a><a id="presentation-download-artwork" class="button button-secondary" download hidden>Descargar imagen IA</a></div>
               <div id="presentation-result-gallery" class="presentation-gallery"></div>
             </section>
           </div>

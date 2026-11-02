@@ -8,7 +8,7 @@ import { buildInventory, fileForRoute, inventoryHtml, routeFromFile, SITE_DIR } 
 import { auth, authDatabase, migrateAuthDatabase } from './auth.mjs';
 import { DATA_DIR, DATA_SCOPE, MEDIA_DIR, STORE_FILE } from './data-paths.mjs';
 import { appStorageEnabled, appStorageScope, deleteFile as deleteStorageFile, downloadFile as downloadStorageFile, removeLocalFile, uploadFile as uploadStorageFile } from './app-storage.mjs';
-import { generatePresentation, filePathForPresentation, ensurePresentationDir } from './presentation-generator.mjs';
+import { generatePresentation, filePathForPresentation, ensurePresentationDir, presentationModels } from './presentation-generator.mjs';
 import { authSecurityPolicy, checkLoginAttempt, recordLoginFailure, recordLoginSuccess } from './auth-security.mjs';
 
 const ROOT = process.cwd();
@@ -986,6 +986,8 @@ function publicPresentationItem(item) {
     slideCount: item.slideCount || item.outline?.slides?.length || 0,
     aiUsed: Boolean(item.aiUsed),
     model: item.model || null,
+    imageUsed: Boolean(item.imageUsed),
+    imageModel: item.imageModel || null,
     warning: item.warning || null,
     createdAt: item.createdAt,
     createdBy: item.createdBy || '',
@@ -993,13 +995,17 @@ function publicPresentationItem(item) {
     files: {
       pptx: `/api/cms/presentations/${id}/file/pptx`,
       pdf: `/api/cms/presentations/${id}/file/pdf`,
+      artwork: item.files?.artwork ? `/api/cms/presentations/${id}/file/artwork` : null,
       images: Array.from({ length: item.slideCount || item.outline?.slides?.length || 0 }, (_, index) => `/api/cms/presentations/${id}/file/png?slide=${index}`)
     }
   };
 }
 
 app.get('/api/cms/presentations', requireAuth, (req, res) => {
-  res.json({ presentations: (store.presentations || []).map(publicPresentationItem) });
+  res.json({
+    presentations: (store.presentations || []).map(publicPresentationItem),
+    generator: presentationModels()
+  });
 });
 
 app.post('/api/cms/presentations/generate', requireAuth, requireEditor, requireCsrf, async (req, res) => {
@@ -1010,7 +1016,7 @@ app.post('/api/cms/presentations/generate', requireAuth, requireEditor, requireC
   const language = ['es', 'en'].includes(body.language) ? body.language : 'es';
   const style = ['editorial', 'auto', 'dark'].includes(body.style) ? body.style : 'editorial';
   try {
-    const result = await generatePresentation({ topic, sourceText, slideCount: body.slideCount, language, style, accentColor: body.accentColor });
+    const result = await generatePresentation({ topic, sourceText, slideCount: body.slideCount, language, style, accentColor: body.accentColor, includeImage: body.includeImage === true });
     const record = { ...result, createdBy: req.cmsUser.email };
     store.presentations = [record, ...(store.presentations || [])].slice(0, 100);
     audit('presentation.create', req.cmsUser, { presentationId: record.id, slideCount: record.slideCount, aiUsed: record.aiUsed, model: record.model });
@@ -1031,6 +1037,7 @@ app.get('/api/cms/presentations/:id/file/:kind', requireAuth, async (req, res, n
   let disposition = 'attachment';
   if (kind === 'pptx') { file = item.files?.pptx; contentType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'; }
   if (kind === 'pdf') { file = item.files?.pdf; contentType = 'application/pdf'; }
+  if (kind === 'artwork') { file = item.files?.artwork; contentType = 'image/png'; }
   if (kind === 'png') {
     const index = Number.parseInt(req.query.slide, 10);
     file = Number.isInteger(index) ? item.files?.images?.[index] : null;

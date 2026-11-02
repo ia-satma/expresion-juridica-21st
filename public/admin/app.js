@@ -63,6 +63,7 @@ async function api(url, options = {}) {
     error.code = payload.error;
     error.status = response.status;
     error.ownerEmail = payload.ownerEmail;
+    error.detail = payload.detail;
     throw error;
   }
   return payload;
@@ -122,11 +123,13 @@ function showApp() {
   $('#publish-button').hidden = !canEdit;
   $('#media-upload')?.closest('label')?.toggleAttribute('hidden', !canEdit);
   $('#view-title').textContent = 'Inicio';
-  navigate('home');
+  navigate(location.hash === '#presentations' ? 'presentations' : 'home');
 }
 
 function navigate(view) {
   state.view = view;
+  if (view === 'presentations') history.replaceState(null, '', '#presentations');
+  else if (location.hash === '#presentations') history.replaceState(null, '', location.pathname + location.search);
   const titles = { home: 'Inicio', dashboard: 'Resumen', pages: 'Páginas', signatures: 'Firmas de correo', presentations: 'Presentaciones IA', media: 'App Storage', revisions: 'Versiones', activity: 'Actividad', submissions: 'Solicitudes', settings: 'Ajustes', users: 'Usuarios' };
   $('#view-title').textContent = titles[view] || 'CMS';
   $$('.nav-item[data-view]').forEach((button) => button.classList.toggle('is-active', button.dataset.view === view));
@@ -656,7 +659,7 @@ async function saveSignature(event) {
 }
 
 function presentationStatus(presentation) {
-  if (presentation.aiUsed) return `Generada con ${presentation.model || 'OpenAI'} · revisa el contenido antes de compartir`;
+  if (presentation.aiUsed) return `Contenido: ${presentation.model || 'OpenAI'}${presentation.imageUsed ? ` · Imagen: ${presentation.imageModel}` : ''} · revisa el contenido antes de compartir`;
   if (presentation.warning === 'OPENAI_API_KEY_MISSING') return 'Prueba local guardada · añade la clave de OpenAI para activar el agente';
   return 'Esquema de respaldo guardado · revisa el contenido antes de compartir';
 }
@@ -669,6 +672,9 @@ function renderPresentationResult(presentation) {
   $('#presentation-result-meta').textContent = `${presentation.slideCount || 0} diapositivas · ${formatDate(presentation.createdAt)} · ${presentationStatus(presentation)}`;
   $('#presentation-download-pptx').href = presentation.files?.pptx || '#';
   $('#presentation-download-pdf').href = presentation.files?.pdf || '#';
+  const artwork = $('#presentation-download-artwork');
+  artwork.hidden = !presentation.files?.artwork;
+  artwork.href = presentation.files?.artwork || '#';
   const gallery = $('#presentation-result-gallery');
   gallery.innerHTML = (presentation.files?.images || []).slice(0, 6).map((src, index) => `<figure class="presentation-slide"><img src="${escapeHtml(src)}" alt="Diapositiva ${index + 1}" loading="lazy" /><figcaption>Diapositiva ${index + 1}</figcaption></figure>`).join('');
 }
@@ -687,6 +693,13 @@ async function loadPresentations() {
   try {
     const response = await api('/api/cms/presentations');
     state.presentations = response.presentations || [];
+    const aiConfigured = Boolean(response.generator?.aiConfigured);
+    $('#presentation-config').textContent = aiConfigured
+      ? `IA conectada · Contenido: ${response.generator.textModel} · Imágenes: ${response.generator.imageModel}. Descargas en PPTX, PDF y PNG.`
+      : 'IA pendiente de configurar. Añade OPENAI_API_KEY en Secrets de Replit para activarla. Mientras tanto, puedes generar un archivo de prueba sin IA.';
+    const canGenerate = ['owner', 'editor'].includes(state.user?.role);
+    $('#generate-presentation').disabled = !canGenerate;
+    $('#generate-presentation').textContent = aiConfigured ? 'Generar presentación con IA' : 'Generar archivo de prueba';
     renderPresentations();
   } catch (error) {
     if (error.code !== 'AUTH_REQUIRED') notify('No se pudieron cargar las presentaciones.', 'error');
@@ -698,7 +711,7 @@ async function submitPresentation(event) {
   const button = $('#generate-presentation');
   const status = $('#presentation-status');
   button.disabled = true;
-  status.textContent = 'Preparando archivos…';
+  status.textContent = 'Generando contenido y archivos… Puede tardar unos minutos.';
   try {
     const response = await api('/api/cms/presentations/generate', {
       method: 'POST',
@@ -708,7 +721,8 @@ async function submitPresentation(event) {
         slideCount: Number($('#presentation-slide-count').value),
         language: $('#presentation-language').value,
         style: $('#presentation-style').value,
-        accentColor: $('#presentation-accent').value
+        accentColor: $('#presentation-accent').value,
+        includeImage: $('#presentation-include-image').checked
       }
     });
     renderPresentationResult(response.presentation);
@@ -717,9 +731,9 @@ async function submitPresentation(event) {
     notify('Presentación guardada en el historial.');
   } catch (error) {
     status.textContent = '';
-    notify(error.code === 'PRESENTATION_TOPIC_REQUIRED' ? 'Escribe un tema de al menos 6 caracteres.' : `No se pudo generar: ${error.message}`, 'error');
+    notify(error.code === 'PRESENTATION_TOPIC_REQUIRED' ? 'Escribe un tema de al menos 6 caracteres.' : `No se pudo generar: ${error.detail || error.message}`, 'error');
   } finally {
-    button.disabled = false;
+    button.disabled = !['owner', 'editor'].includes(state.user?.role);
   }
 }
 
