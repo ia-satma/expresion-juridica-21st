@@ -10,6 +10,8 @@ import { DATA_DIR, DATA_SCOPE, MEDIA_DIR, STORE_FILE } from './data-paths.mjs';
 import { appStorageEnabled, appStorageScope, deleteFile as deleteStorageFile, downloadFile as downloadStorageFile, removeLocalFile, uploadFile as uploadStorageFile } from './app-storage.mjs';
 import { generatePresentation, filePathForPresentation, ensurePresentationDir, presentationModels } from './presentation-generator.mjs';
 import { preparePresentationInputs, cleanupPresentationInputs, MAX_PRESENTATION_FILE_BYTES, presentationInputError } from './presentation-inputs.mjs';
+import { registerSocialRoutes } from './social-routes.mjs';
+import { registerDocumentRoutes } from './document-routes.mjs';
 import { authSecurityPolicy, checkLoginAttempt, recordLoginFailure, recordLoginSuccess } from './auth-security.mjs';
 
 const ROOT = process.cwd();
@@ -1110,6 +1112,9 @@ app.get('/api/cms/presentations/:id/file/:kind', requireAuth, async (req, res, n
   if (!localPath || !path.resolve(localPath).startsWith(`${PRESENTATIONS_DIR}${path.sep}`) || !fs.existsSync(localPath)) return res.status(404).json({ error: 'PRESENTATION_FILE_NOT_FOUND' });
   return res.sendFile(localPath, { dotfiles: 'deny' }, (error) => { if (error && !res.headersSent) next(error); });
 });
+
+registerSocialRoutes(app, { store, writeStore, requireAuth, requireEditor, requireCsrf, receivePresentationInputs, audit });
+registerDocumentRoutes(app, { store, writeStore, requireAuth, requireEditor, requireCsrf, audit });
 
 app.get('/api/cms/submissions', requireAuth, (req, res) => {
   const status = String(req.query.status || '').trim();

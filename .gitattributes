@@ -1,0 +1,2 @@
+*.pdf binary
+public/admin/vendor/tiptap.js -whitespace

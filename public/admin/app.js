@@ -1,3 +1,5 @@
+import { createSocialStudio } from "./social.js?v=20261102-studio";
+import { createDocumentStudio } from "./documents.js?v=20261102-studio";
 const state = {
   user: null,
   csrf: null,
@@ -123,14 +125,14 @@ function showApp() {
   $('#publish-button').hidden = !canEdit;
   $('#media-upload')?.closest('label')?.toggleAttribute('hidden', !canEdit);
   $('#view-title').textContent = 'Inicio';
-  navigate(location.hash === '#presentations' ? 'presentations' : 'home');
+  navigate(['presentations', 'posts', 'documents'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'home');
 }
 
 function navigate(view) {
   state.view = view;
-  if (view === 'presentations') history.replaceState(null, '', '#presentations');
-  else if (location.hash === '#presentations') history.replaceState(null, '', location.pathname + location.search);
-  const titles = { home: 'Inicio', dashboard: 'Resumen', pages: 'Páginas', signatures: 'Firmas de correo', presentations: 'Presentaciones IA', media: 'App Storage', revisions: 'Versiones', activity: 'Actividad', submissions: 'Solicitudes', settings: 'Ajustes', users: 'Usuarios' };
+  if (['presentations', 'posts', 'documents'].includes(view)) history.replaceState(null, '', `#${view}`);
+  else if (['#presentations', '#posts', '#documents'].includes(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+  const titles = { home: 'Inicio', dashboard: 'Resumen', pages: 'Páginas', signatures: 'Firmas de correo', presentations: 'Presentaciones IA', posts: 'Posts y carruseles IA', documents: 'Documentos con membrete', media: 'App Storage', revisions: 'Versiones', activity: 'Actividad', submissions: 'Solicitudes', settings: 'Ajustes', users: 'Usuarios' };
   $('#view-title').textContent = titles[view] || 'CMS';
   $$('.nav-item[data-view]').forEach((button) => button.classList.toggle('is-active', button.dataset.view === view));
   $$('.content-view').forEach((section) => { section.hidden = section.id !== `${view}-view`; });
@@ -139,6 +141,8 @@ function navigate(view) {
   if (view === 'pages') loadPages();
   if (view === 'signatures') loadSignatures();
   if (view === 'presentations') loadPresentations();
+  if (view === 'posts') socialStudio.load();
+  if (view === 'documents') documentStudio.load();
   if (view === 'media') loadMedia();
   if (view === 'revisions') loadRevisions();
   if (view === 'activity') loadActivity();
@@ -829,6 +833,9 @@ function authErrorMessage(error) {
   if (error?.message === 'INVALID_EMAIL_OR_PASSWORD' || error?.message === 'CREDENTIALS_INVALID') return 'Email o contraseña incorrectos.';
   return 'No se pudo completar el acceso: ' + (error?.message || 'inténtalo de nuevo.');
 }
+
+const socialStudio = createSocialStudio({ api, state, notify, escapeHtml, formatDate });
+const documentStudio = createDocumentStudio({ api, state, notify, escapeHtml, formatDate });
 
 async function boot() {
   $('#auth-form').addEventListener('submit', async (event) => {

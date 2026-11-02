@@ -1,0 +1,4 @@
+interface:
+  display_name: "Estudio editorial EJ"
+  short_description: "Presentaciones, posts y documentos con la identidad de EJ"
+  default_prompt: "Usa la identidad de Expresión Jurídica para crear presentaciones, posts, carruseles, copy y documentos editables."
