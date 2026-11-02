@@ -31,6 +31,11 @@ const a=await generatePresentation({topic:fixture,sourceText:prepared.sourceText
 assert.equal(a.generatedImageCount,0,'Uploaded image must take precedence over image generation');assert.equal(calls.length,1);assert.equal(a.brandProfile,'ej-manual-2026');
 const ppt=await JSZip.loadAsync(await fs.readFile(path.join(root,a.files.pptx.localPath)));
 const xml=await ppt.file('ppt/presentation.xml').async('string');assert.match(xml,/embeddedFontLst/);assert.match(xml,/embedTrueTypeFonts="1"/);assert.equal(Object.keys(ppt.files).filter(n=>/fonts\/ej-\d.fntdata$/.test(n)).length,2);
+const coverPhoto=[...(await ppt.file('ppt/slides/slide1.xml').async('string')).matchAll(/<p:pic\b[\s\S]*?<\/p:pic>/g)].at(-1)[0];
+const crop=coverPhoto.match(/<a:srcRect l="(\d+)" r="(\d+)" t="(\d+)" b="(\d+)"/).slice(1).map(Number);
+const extent=coverPhoto.match(/<a:xfrm\b[^>]*>[\s\S]*?<a:ext cx="(\d+)" cy="(\d+)"/).slice(1).map(Number);
+const visibleRatio=900*(1-(crop[0]+crop[1])/100000)/(600*(1-(crop[2]+crop[3])/100000));
+assert(Math.abs(visibleRatio/(extent[0]/extent[1])-1)<.0001,'The source photo must retain its proportions in PowerPoint');
 const slide=await ppt.file('ppt/slides/slide2.xml').async('string');assert.match(slide,/Bahnschrift Light/);assert.match(slide,/Libre Caslon Text/);assert.match(slide,/D9BC88/);assert.match(slide,/141A3A/);assert.match(slide,/Diagnóstico/);
 const zip=await JSZip.loadAsync(await fs.readFile(path.join(root,a.files.imagesZip.localPath)));assert.equal(Object.keys(zip.files).filter(n=>n.endsWith('.png')).length,3);
 for(const kind of ['pptx','pdf'])await fs.copyFile(path.join(root,a.files[kind].localPath),`${out}/ej-brand.${kind}`);

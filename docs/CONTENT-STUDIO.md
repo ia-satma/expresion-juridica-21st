@@ -30,11 +30,14 @@ Las rutas requieren sesión y permisos de editor para modificar; las mutaciones 
 
 El cliente obtiene el token CSRF vigente de su cookie al enviar cada mutación. Así puede guardar aunque otra pestaña haya renovado el token al comprobar la sesión; la validación del servidor se mantiene. Los documentos organizados con IA conservan el título solicitado como primer encabezado, aun si el modelo propone otra sección inicial.
 
+Las fotografías de PowerPoint usan la proporción real de la imagen para calcular su recorte. El marco puede ser vertical, horizontal o cuadrado sin estirar la foto. `server/presentation-images.mjs` corrige también el recorte de los PPTX anteriores al descargarlos, conservando sus imágenes originales, fuentes y objetos editables. No altera el archivo guardado ni consume otra llamada de IA.
+
 ## Validación
 
 - `node scripts/check-presentations.mjs`: entradas, formatos, fuentes, fotos aportadas primero, límite técnico de imágenes, contexto México y pies nativos en PPTX.
 - `node scripts/check-social-studio.mjs`: generación asíncrona, autorización, edición sin llamadas de IA, HTML/PNG/ZIP, seis copies, ocho composiciones, cuatro formatos e historial recuperado en otra instancia.
 - `node scripts/check-documents.mjs`: conservación íntegra del texto, DOCX nativo, dos fuentes, PDF de varias páginas, membrete repetido, edición sin IA, Sol opcional y recuperación desde otra instancia.
 - `node scripts/check-cms-csrf.mjs`: uso del token vigente cuando cambia en otra pestaña, con alternativa para una cookie ausente o mal formada.
+- `node scripts/check-presentation-images.mjs`: proporciones en marcos verticales, horizontales y cuadrados; reparación repetible de archivos anteriores sin modificar el medio original.
 
 Estas pruebas usan un servidor simulado y no consumen créditos. La validación visual incluye render de DOCX con LibreOffice y comprobación del PDF. La última revisión funcional se realiza en el CMS publicado con una generación real, separada de las pruebas simuladas.

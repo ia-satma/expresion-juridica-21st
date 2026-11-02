@@ -12,6 +12,7 @@ import { generatePresentation, filePathForPresentation, ensurePresentationDir, p
 import { preparePresentationInputs, cleanupPresentationInputs, MAX_PRESENTATION_FILE_BYTES, presentationInputError } from './presentation-inputs.mjs';
 import { registerSocialRoutes } from './social-routes.mjs';
 import { registerDocumentRoutes } from './document-routes.mjs';
+import { repairPresentationImageSizing } from './presentation-images.mjs';
 import { authSecurityPolicy, checkLoginAttempt, recordLoginFailure, recordLoginSuccess } from './auth-security.mjs';
 
 const ROOT = process.cwd();
@@ -1103,13 +1104,17 @@ app.get('/api/cms/presentations/:id/file/:kind', requireAuth, async (req, res, n
     try {
       const result = await downloadStorageFile(file.relative);
       if (!result.ok) return res.status(404).json({ error: 'PRESENTATION_FILE_NOT_FOUND' });
-      return res.send(result.value);
+      return res.send(kind === 'pptx' ? (await repairPresentationImageSizing(result.value)).buffer : result.value);
     } catch (error) {
       return next(error);
     }
   }
   const localPath = filePathForPresentation(file);
   if (!localPath || !path.resolve(localPath).startsWith(`${PRESENTATIONS_DIR}${path.sep}`) || !fs.existsSync(localPath)) return res.status(404).json({ error: 'PRESENTATION_FILE_NOT_FOUND' });
+  if (kind === 'pptx') {
+    try { return res.send((await repairPresentationImageSizing(await fs.promises.readFile(localPath))).buffer); }
+    catch (error) { return next(error); }
+  }
   return res.sendFile(localPath, { dotfiles: 'deny' }, (error) => { if (error && !res.headersSent) next(error); });
 });
 

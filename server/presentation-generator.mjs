@@ -179,7 +179,10 @@ async function pptx(scenes, title, language, sources) {
       if (n.type === 'text') page.addText(n.text, { x: n.x / 120, y: n.y / 120, w: n.w / 120, h: n.h / 120, fontFace: n.font === 'heading' ? B.pptHeadingFont : B.pptBodyFont, fontSize: n.size * .6, color: n.color.slice(1), italic: n.font === 'heading', margin: 0, breakLine: false, valign: 'top', lineSpacingMultiple: 1.25, fit: 'shrink' });
       if (n.type === 'image') {
         const data = `image/png;base64,${n.buffer.toString('base64')}`;
-        page.addImage({ data, x: n.x / 120, y: n.y / 120, w: n.w / 120, h: n.h / 120, sizing: { type: 'cover', w: n.w / 120, h: n.h / 120 } });
+        const image = await sharp(n.buffer).metadata();
+        // PptxGenJS uses these outer dimensions as the source aspect ratio;
+        // the sizing box below determines the final editable picture frame.
+        page.addImage({ data, x: n.x / 120, y: n.y / 120, w: image.width / 120, h: image.height / 120, sizing: { type: 'cover', w: n.w / 120, h: n.h / 120 } });
       }
       if (n.type === 'rect') page.addShape(p.ShapeType.rect, { x: n.x / 120, y: n.y / 120, w: n.w / 120, h: n.h / 120, fill: { color: n.fill.slice(1) }, line: { color: n.fill.slice(1), transparency: 100 } });
       if (n.type === 'circle') page.addShape(p.ShapeType.ellipse, { x: n.x / 120, y: n.y / 120, w: n.r * 2 / 120, h: n.r * 2 / 120, fill: { color: n.fill.slice(1) }, line: { color: n.fill.slice(1), transparency: 100 } });

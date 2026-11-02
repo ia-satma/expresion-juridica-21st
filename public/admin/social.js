@@ -176,7 +176,12 @@ export function createSocialStudio({ api, state, notify, escapeHtml: h, formatDa
     for (const field of ['documents', 'supportImages']) attachments[field].forEach(file => body.append(field, file));
     studio.busy = true; syncButtons(); error();
     try { const response = await api('/api/cms/posts/generate', { method: 'POST', body }); await waitJob(response.job.id); }
-    catch (failure) { studio.busy = false; syncButtons(); error(failure.detail || 'No se pudo iniciar la generación. Inténtalo de nuevo.'); }
+    catch (failure) {
+      studio.busy = false; syncButtons();
+      const messages = { CSRF_INVALID: 'La sesión se actualizó en otra pestaña. Tu texto se conserva; vuelve a pulsar Generar.', STUDIO_STORAGE_UNAVAILABLE: 'No se pudo conectar con el almacenamiento. Tu texto se conserva; vuelve a intentarlo.' };
+      console.error('[social-start]', failure.code || failure.message, failure.status || '');
+      error(messages[failure.code] || failure.detail || 'No se pudo iniciar la generación. Inténtalo de nuevo.');
+    }
   }
   async function save(event) {
     event?.preventDefault(); if (studio.busy || !studio.draft) return;
