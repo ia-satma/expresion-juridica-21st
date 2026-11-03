@@ -12,7 +12,7 @@ export function registerSocialRoutes(app, { store, writeStore, requireAuth, requ
   const publicSet = item => ({
     id: item.id, title: item.title, topic: item.topic, count: item.count, mode: item.mode, size: item.size,
     direction: item.direction, language: item.language, aiUsed: item.aiUsed, model: item.model,
-    imageModel: item.imageModel, generatedImageCount: item.generatedImageCount, brandProfile: item.brandProfile,
+    imageModel: item.imageModel, generatedImageCount: item.generatedImageCount, brandProfile: item.brandProfile, designSkill:item.designSkill||null,
     createdAt: item.createdAt, updatedAt: item.updatedAt, deletedAt:item.deletedAt||null, requestedPalette:item.requestedPalette||'auto', designNotes:item.designNotes||'', referenceId:item.referenceId||null, sources: item.sources || [], copies: item.copies,
     posts: item.posts.map(({ artwork, imagePrompt, ...post }) => ({ ...post, hasArtwork: Boolean(artwork) })),
     files: { png: item.files.png.map((_, index) => `/api/cms/posts/${item.id}/file/png?piece=${index}`), html: item.files.html.map((_, index) => `/api/cms/posts/${item.id}/file/html?piece=${index}`), pack: `/api/cms/posts/${item.id}/file/pack`, copy: `/api/cms/posts/${item.id}/file/copy` }

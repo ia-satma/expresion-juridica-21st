@@ -36,6 +36,8 @@ for (const key of ['REPL_ID', 'REPLIT_DEPLOYMENT_URL', 'REPLIT_DEV_DOMAIN']) del
 const { registerSocialRoutes } = await import('../server/social-routes.mjs');
 const { renderSocialSet, readSocialFile } = await import('../server/social-generator.mjs');
 const { SOCIAL_PALETTES }=await import('../server/social-design.mjs');
+const { SOCIAL_FORMATS,SOCIAL_SIZES }=await import('../public/admin/social-formats.js');
+const { SOCIAL_DESIGN_SKILL_ID }=await import('../server/editorial-skill.mjs');
 const store = { socialPosts: [] };
 const app = express(); app.use(express.json({ limit: '5mb' }));
 const requireAuth = (req, res, next) => {
@@ -78,10 +80,16 @@ try {
   const result = await finish(started.data.job.id);
   assert.equal(result.count, 3); assert.equal(result.files.png.length, 3); assert.equal(result.files.html.length, 3);
   assert.equal(result.generatedImageCount, 2); assert.equal(result.brandProfile, 'ej-manual-2026'); assert.equal(result.model, 'gpt-6.1-sol'); assert.equal(result.imageModel, 'gpt-image-2');
+  assert.equal(result.designSkill,SOCIAL_DESIGN_SKILL_ID);
+  const capabilities=(await json('/api/cms/posts')).data.generator;
+  assert.deepEqual(capabilities.sizes,SOCIAL_SIZES);assert.equal(Object.keys(capabilities.formats).length,9);
   assert.deepEqual(Object.keys(result.copies), networks); assert.equal(result.sources.length, 1);
   assert.equal(result.requestedPalette,'mixed');assert(new Set(result.posts.map(post=>post.design.palette)).size>1);
   assert.equal(requests.filter(request => request.url === '/images/generations').length, 2);
   assert.match(requests.find(request => request.url === '/responses').body.instructions, /Mexico|Mexican|México/);
+  const campaignInstructions=requests.find(request=>request.body?.text?.format?.name==='social_campaign').body.instructions;
+  assert.match(campaignInstructions,/Anthropic's frontend-design and canvas-design/);assert.match(campaignInstructions,/Preserve facts and the selected brand/);
+  assert.match(campaignInstructions,/1080 × 1350/);assert.match(campaignInstructions,/Libre Caslon/);
   assert(requests.filter(request => request.url === '/images/generations').every(request => /Documentary|documentary/.test(request.body.prompt) && /Mexico|México/.test(request.body.prompt)));
   const htmls = [];
   for (const [index, url] of result.files.html.entries()) {
@@ -119,6 +127,7 @@ try {
   assert.notEqual(redesigned.id,result.id);assert.equal(redesigned.referenceId,result.id);assert.equal(redesigned.model,'gpt-6.1-sol');assert(redesigned.posts.every(post=>post.design.palette==='ivory'));
   assert.deepEqual(redesigned.posts.map(({layout,design,hasArtwork,...post})=>post),recaptioned.posts.map(({layout,design,hasArtwork,...post})=>post));assert.deepEqual(redesigned.copies,recaptioned.copies);
   const designCall=requests.find(call=>call.body?.text?.format?.name==='social_art_direction');assert(designCall.body.input[0].content.some(item=>item.type==='input_image'));assert.equal(designCall.body.model,'gpt-6.1-sol');assert.match(designCall.body.instructions,/graphic designer|art director/);
+  assert.match(designCall.body.instructions,/Anthropic's frontend-design and canvas-design/);
   assert.equal((await json(`/api/cms/posts/${redesigned.id}`,{method:'DELETE',headers:{'x-cms-csrf':''}})).response.status,403);
   assert.equal((await json(`/api/cms/posts/${redesigned.id}`,{method:'DELETE',headers:{'x-qa-role':'viewer'}})).response.status,403);
   const removed=await json(`/api/cms/posts/${redesigned.id}`,{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({version:redesigned.updatedAt})});assert.equal(removed.response.status,200);assert.equal(removed.data.recoverable,true);
@@ -131,12 +140,29 @@ try {
   }
   const variants = await renderSocialSet({ ...store.socialPosts[0], id: 'qa-variants', count: 8, posts: layouts.map((layout, index) => ({ ...makePost(index), layout, artwork: null })) });
   for (const [index, file] of variants.files.png.entries()) await fs.writeFile(path.join(output, `variant-${layouts[index]}.png`), await readSocialFile(file));
-  for (const [size, dimensions] of Object.entries({ square: [1080, 1080], story: [1080, 1920], landscape: [1080, 566] })) {
+  for (const [size, dimensions] of Object.entries(SOCIAL_SIZES)) {
     const rendered = await renderSocialSet({ ...store.socialPosts[0], id: `qa-${size}`, count: 1, size, posts: [{ ...makePost(0), headline: 'Una idea clara', body: 'Escuchar. Definir prioridades. Dar seguimiento.', bullets: [], layout: 'typographic', artwork: null }] });
     const image = await readSocialFile(rendered.files.png[0]); const info = await sharp(image).metadata(); assert.deepEqual([info.width, info.height], dimensions); await fs.writeFile(path.join(output, `size-${size}.png`), image);
+    const html=await readSocialFile(rendered.files.html[0]);const $=load(html.toString());assert(!$('[data-node]').toArray().some(node=>/01\s*\/\s*01/.test($(node).text())),'A standalone post must not show a carousel counter');
+    const title=$('[data-field="headline"]');const style=Object.fromEntries(title.attr('style').split(';').filter(Boolean).map(part=>part.split(':')));
+    assert(Number.parseFloat(style['font-size'])>3,'Increasing export resolution must preserve the visual type scale');
+    if(SOCIAL_FORMATS[size].safeArea){
+      for(const node of $('[data-field]').toArray()){
+        const css=Object.fromEntries($(node).attr('style').split(';').filter(Boolean).map(part=>part.split(':')));
+        const top=Number.parseFloat(css.top)*dimensions[0]/100,box=Number.parseFloat(css['min-height'])*dimensions[0]/100;
+        assert(top>=160&&top+box<=dimensions[1]-250,'Essential story content must stay inside the safe area');
+      }
+    }
   }
+  const single=await renderSocialSet({...store.socialPosts[0],count:1,posts:[{...makePost(0),eyebrow:'',layout:'editorial',artwork:null}]});
+  const singleHtml=load((await readSocialFile(single.files.html[0])).toString());
+  assert.equal(singleHtml('[data-field="eyebrow"]').text(),'');assert(!singleHtml('[data-node]').toArray().some(node=>singleHtml(node).text()==='01'));
+  const extraFormat=new FormData();Object.entries({topic:'Cómo preparar una consulta',count:1,size:'pinterest',includeImages:false}).forEach(([key,value])=>extraFormat.append(key,String(value)));
+  const extraStart=await json('/api/cms/posts/generate',{method:'POST',body:extraFormat});assert.equal(extraStart.response.status,202);
+  const extraResult=await finish(extraStart.data.job.id);assert.equal(extraResult.size,'pinterest');
+  const formatCall=requests.filter(request=>request.body?.text?.format?.name==='social_campaign').at(-1);assert.match(formatCall.body.instructions,/1000 × 1500/);assert.match(formatCall.body.instructions,/Pinterest/);
   assert(JSON.stringify(store).length < 90000, 'Store metadata must not contain embedded binary data');
-  console.log(JSON.stringify({ passed: true, asyncJobs: true, authAndCsrf: true, uploadFirst: true, pngAndEditableHtml: true, individualPngDownload:true, persistedEditsWithoutAi: true, visualRedesignWithSol:true, originalPreserved:true,palettes:4,recoverableDelete:true, networkCopies: 6, layouts: 10, sizes: 4, output }));
+  console.log(JSON.stringify({ passed: true, asyncJobs: true, authAndCsrf: true, uploadFirst: true, pngAndEditableHtml: true, individualPngDownload:true, persistedEditsWithoutAi: true, visualRedesignWithSol:true, adaptedAnthropicSkills:true,storySafeArea:true,originalPreserved:true,palettes:4,recoverableDelete:true, networkCopies: 6, layouts: 10, sizes: Object.keys(SOCIAL_SIZES).length, output }));
   if (process.env.EJ_SOCIAL_PREVIEW === '1') console.log(`PREVIEW ${base}/admin/#posts`);
 } finally {
   if (process.env.EJ_SOCIAL_PREVIEW !== '1') { server.close(); mock.close(); }

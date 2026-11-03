@@ -1,8 +1,7 @@
-import { createGenerationProgress } from './generation-progress.js?v=20261103-studio4';
-import { confirmLibraryRemoval } from './library-actions.js?v=20261103-studio4';
+import { createGenerationProgress } from './generation-progress.js?v=20261103-design5';
+import { confirmLibraryRemoval } from './library-actions.js?v=20261103-design5';
+import { SOCIAL_FORMATS, SOCIAL_SIZES as SIZES, SOCIAL_SIZE_LABELS as SIZE_LABELS } from './social-formats.js?v=20261103-design5';
 const NETWORKS = { instagram: 'Instagram', facebook: 'Facebook', linkedin: 'LinkedIn', x: 'X', threads: 'Threads', tiktok: 'TikTok' };
-const SIZES = { portrait: [1080, 1350], square: [1080, 1080], story: [1080, 1920], landscape: [1080, 566] };
-const SIZE_LABELS = { portrait: 'Vertical 4:5', square: 'Cuadrado 1:1', story: 'Historia 9:16', landscape: 'Horizontal' };
 
 export function createSocialStudio({ api, state, notify, escapeHtml: h, formatDate }) {
   const $ = selector => document.querySelector(selector);
@@ -10,6 +9,9 @@ export function createSocialStudio({ api, state, notify, escapeHtml: h, formatDa
   if (!$('#posts-form')) return { load: async () => {} };
   const studio = { library: [], saved: null, draft: null, index: 0, network: 'linkedin', busy: false, dirty: false, polling: null, configured: false, trash:false };
   const progress=createGenerationProgress($('#posts-progress'),'social');
+  $('#posts-size').innerHTML=Object.entries(SOCIAL_FORMATS).map(([id,format])=>`<option value="${id}">${h(format.label)} · ${format.dimensions.join(' × ')}</option>`).join('');
+  function formatHelp(){const format=SOCIAL_FORMATS[$('#posts-size').value];$('#posts-format-help').textContent=`Recomendado para ${format.recommended}. ${format.note}`;}
+  $('#posts-size').addEventListener('change',formatHelp);formatHelp();
   const paletteLabels={'navy-gold':'Azul y dorado',editorial:'Blanco editorial',ivory:'Marfil y azul',graphite:'Grafito y dorado'};
   const paletteColors={'navy-gold':['#141A3A','#D9BC88','#F4F4F4'],editorial:['#FFFFFF','#141A3A','#D9BC88'],ivory:['#F7F2E8','#141A3A','#B08D57'],graphite:['#0B0F1E','#F4F4F4','#D9BC88']};
   function palettePreview(){const colors=paletteColors[$('#posts-palette').value]||['#141A3A','#D9BC88','#FFFFFF','#F7F2E8','#0B0F1E'];$('#posts-palette-preview').innerHTML=colors.map(color=>`<i style="background:${color}"></i>`).join('');}

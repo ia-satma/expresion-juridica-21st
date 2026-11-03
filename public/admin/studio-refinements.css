@@ -5,3 +5,5 @@
 .social-canvas-wrap{position:relative}.social-preview-state{position:absolute;inset:0;z-index:2;display:grid;place-items:center;padding:28px;background:#f8f8fbe8;color:#60687b;font-size:12px;line-height:1.7;text-align:center}.social-preview-state[hidden]{display:none}.social-piece-tile img{width:136px;height:170px;object-fit:cover}.social-piece-tile>button{display:block}
 
 .social-art-director select{display:block;width:100%;max-width:560px;padding:12px 14px;background:white;border:1px solid #d6d9e3;border-radius:6px;color:#141a3a;font:inherit;font-size:13px}@media(max-width:650px){.social-art-director select{font-size:16px}}
+.social-format-help{margin:-12px 0 24px;padding:12px 16px;border-left:2px solid var(--ej-gold);background:#f8f7f4;color:#505461;font-size:12px;line-height:1.65;overflow-wrap:anywhere}
+#posts-size{width:100%;max-width:100%;min-width:0;text-overflow:ellipsis}

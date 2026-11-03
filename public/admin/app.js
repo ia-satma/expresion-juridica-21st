@@ -1,9 +1,9 @@
 import { createContentEditor, pageTitle } from "./content-editor.js?v=20261103-editable3";
 import { currentCmsCsrf } from "./csrf.js?v=20261102-studio2";
-import { createSocialStudio } from "./social.js?v=20261103-studio4";
-import { createDocumentStudio } from "./documents.js?v=20261103-studio4";
-import { createGenerationProgress } from './generation-progress.js?v=20261103-studio4';
-import { confirmLibraryRemoval } from './library-actions.js?v=20261103-studio4';
+import { createSocialStudio } from "./social.js?v=20261103-design5";
+import { createDocumentStudio } from "./documents.js?v=20261103-design5";
+import { createGenerationProgress } from './generation-progress.js?v=20261103-design5';
+import { confirmLibraryRemoval } from './library-actions.js?v=20261103-design5';
 const state = {
   user: null,
   csrf: null,
