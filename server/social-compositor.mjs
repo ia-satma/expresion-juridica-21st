@@ -121,7 +121,8 @@ export async function composeSocialPiece({post={},index=0,total=1,size='portrait
   const image=(role,buffer,x,y,width,height,extra={})=>{
     if(!buffer||width<=0||height<=0)return;
     const key=`${role}-${crypto.createHash('sha256').update(buffer).digest('hex').slice(0,16)}`;
-    assetMap[key]=buffer;nodes.push({id:id(role),type:'image',assetId:key,x,y,w:width,h:height,fit:'cover',...extra});
+    const crop=extra.role==='artwork'&&width/height>1.8?'top':'center';
+    assetMap[key]=buffer;nodes.push({id:id(role),type:'image',assetId:key,x,y,w:width,h:height,fit:'cover',crop,...extra});
   };
   const addText=(role,value,box,font,target,minimum,color,field='',extra={})=>{
     const face=fonts.faces[font],metrics=fitText(value,box,face,target,minimum,font==='heading'?3:Infinity),alignment=extra.align||design.align||'left';
@@ -318,7 +319,7 @@ function svgNodes(canvas,fonts,editable=false) {
     if(node.type==='path')return `<path ${meta} d="${esc(node.d)}" fill="${esc(node.fill)}"${node.transform?` transform="${esc(node.transform)}"`:''}/>`;
     if(node.type==='circle')return `<circle ${meta} cx="${node.cx}" cy="${node.cy}" r="${node.r}" fill="${esc(node.fill)}"/>`;
     if(node.type==='line')return `<path ${meta} d="M${node.x},${node.y}L${node.x2},${node.y2}" stroke="${esc(node.color)}" stroke-width="${node.strokeWidth||1.6}" fill="none"/>`;
-    if(node.type==='image')return `<image ${meta} data-asset-id="${esc(node.assetId)}" href="${imageData(canvas,node.assetId)}" x="${node.x}" y="${node.y}" width="${node.w}" height="${node.h}" preserveAspectRatio="xMidYMid slice"/>`;
+    if(node.type==='image')return `<image ${meta} data-asset-id="${esc(node.assetId)}" href="${imageData(canvas,node.assetId)}" x="${node.x}" y="${node.y}" width="${node.w}" height="${node.h}" preserveAspectRatio="${node.fit==='contain'?'xMidYMid meet':node.crop==='top'?'xMidYMin slice':'xMidYMid slice'}"/>`;
     if(node.type!=='text')return '';
     if(!editable)return node.lines.map((line,row)=>`<path id="${esc(node.id)}-${row}" fill="${esc(node.color)}" d="${fonts.faces[node.font].getPath(line.text,line.x,line.baseline,node.size,glyphOptions).toPathData(3)}"/>`).join('');
     const field=node.field?` data-field="${esc(node.field)}" data-raw="${esc(node.rawText)}" role="textbox" aria-label="${esc(node.field)}" tabindex="0"`:'';

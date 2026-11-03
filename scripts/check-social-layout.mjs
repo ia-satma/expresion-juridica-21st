@@ -89,6 +89,15 @@ try{
   assert(fullBleed.canvas.gradients.some(gradient=>gradient.id.endsWith('photo-scrim')&&gradient.stops.at(-1).opacity<.2));
   assert(!fullBleed.canvas.nodes.find(node=>node.field==='headline').lines.some(line=>line.text.trim()==='con'),'Prefer a balanced headline over a lonely connector at a large font size');
   await fs.writeFile(path.join(output,'portrait-full-bleed-editorial.png'),await sharp(Buffer.from(svgSocialCanvas(fullBleed.canvas,fonts))).png().toBuffer());
+  const topPortrait=await composeSocialPiece({post:{...synthesized,layout:'photographic',headline:'Un encuentro cercano',body:'Una conversación con contexto.',bullets:[],design:{palette:'editorial',imagePosition:'top',imageShare:'balanced'}},size:'square',fonts,artwork:{buffer:artwork,aiGenerated:true}});
+  assert(topPortrait.validation.valid,JSON.stringify(topPortrait.validation.issues));
+  const widePhoto=topPortrait.canvas.nodes.find(node=>node.role==='artwork');assert(widePhoto.w/widePhoto.h>1.8);assert.equal(widePhoto.crop,'top');
+  const svgPhoto=load(svgSocialCanvas(topPortrait.canvas,fonts),{xmlMode:true})(`image[data-asset-id="${widePhoto.assetId}"]`);
+  const htmlPhoto=load(htmlSocialCanvas(topPortrait.canvas,fonts,'Encuadre superior','Prueba de encuadre'))(`image[data-asset-id="${widePhoto.assetId}"]`);
+  assert.equal(svgPhoto.attr('preserveAspectRatio'),'xMidYMin slice');assert.equal(htmlPhoto.attr('preserveAspectRatio'),'xMidYMin slice');
+  assert.equal(Number(svgPhoto.attr('width')),widePhoto.w);assert.equal(Number(svgPhoto.attr('height')),widePhoto.h);
+  assert.equal(backgroundPhoto.crop,'center','Full-bleed imagery keeps the existing center framing');
+  await fs.writeFile(path.join(output,'square-photo-top-crop.png'),await sharp(Buffer.from(svgSocialCanvas(topPortrait.canvas,fonts))).png().toBuffer());
   let controlChecks=0;
   for(const imagePosition of ['left','right','top','background'])for(const background of ['solid','tonal','glow'])for(const align of ['left','center']){
     const design={palette:['navy-gold','editorial','ivory','graphite'][controlChecks%4],imagePosition,background,align,panel:controlChecks%2?'curved':'plain',imageShare:controlChecks%2?'dominant':'balanced'};
@@ -97,7 +106,7 @@ try{
     assert(piece.canvas.nodes.some(node=>node.type==='image'&&node.role.startsWith('background')||node.role==='artwork'));
     controlChecks++;
   }
-  const summary={passed:true,layoutVersion:2,matrix:count,controls:controlChecks,layouts:layouts.length,sizes:Object.keys(SOCIAL_FORMATS).length,actualPngDimensions:true,bodyMinimumLogical:36,captionMinimumLogical:24,exactLineRuns:true,longTokenWrapping:true,naturalWordHeadlines:true,balancedHeadlineConnectors:true,emptyMessageBlocked:true,fullBleedWithScrims:true,impossibleContentDiagnosed:true,rawTextPreserved:true,gradients:['solid','tonal','glow'],paidCalls:0,examples,output};
+  const summary={passed:true,layoutVersion:2,matrix:count,controls:controlChecks,layouts:layouts.length,sizes:Object.keys(SOCIAL_FORMATS).length,actualPngDimensions:true,bodyMinimumLogical:36,captionMinimumLogical:24,exactLineRuns:true,longTokenWrapping:true,naturalWordHeadlines:true,balancedHeadlineConnectors:true,emptyMessageBlocked:true,fullBleedWithScrims:true,widePhotoTopCrop:true,matchingSvgHtmlCrop:true,impossibleContentDiagnosed:true,rawTextPreserved:true,gradients:['solid','tonal','glow'],paidCalls:0,examples,output};
   await fs.writeFile(path.join(output,'results.json'),JSON.stringify(summary,null,2)+'\n');
   console.log(JSON.stringify(summary));
 }finally{process.chdir(root);await fs.rm(temporary,{recursive:true,force:true});}

@@ -1,6 +1,6 @@
-import { createGenerationProgress } from './generation-progress.js?v=20261103-layout6';
-import { confirmLibraryRemoval } from './library-actions.js?v=20261103-layout6';
-import { SOCIAL_FORMATS, SOCIAL_SIZES as SIZES, SOCIAL_SIZE_LABELS as SIZE_LABELS } from './social-formats.js?v=20261103-layout6';
+import { createGenerationProgress } from './generation-progress.js?v=20261103-layout7';
+import { confirmLibraryRemoval } from './library-actions.js?v=20261103-layout7';
+import { SOCIAL_FORMATS, SOCIAL_SIZES as SIZES, SOCIAL_SIZE_LABELS as SIZE_LABELS } from './social-formats.js?v=20261103-layout7';
 const NETWORKS = { instagram: 'Instagram', facebook: 'Facebook', linkedin: 'LinkedIn', x: 'X', threads: 'Threads', tiktok: 'TikTok' };
 
 export function createSocialStudio({ api, state, notify, escapeHtml: h, formatDate }) {
@@ -45,7 +45,11 @@ export function createSocialStudio({ api, state, notify, escapeHtml: h, formatDa
     $('#posts-layout-feedback-message').textContent=invalid||record.renderStatus==='needs-adjustment'?'Tu texto está conservado. Puedes acortarlo, moverlo al copy o cambiar la composición. Guarda los ajustes; las descargas estarán disponibles cuando el diseño quede listo.':reviewState==='needs-review'?'La revisión visual encontró detalles que conviene corregir. Puedes ajustar el diseño y volver a revisarlo.':'El diseño está guardado. Puedes reintentar la revisión visual para preparar las descargas.';
     const list=$('#posts-layout-issues');list.replaceChildren();
     for(const issue of issues.slice(0,5)){const item=document.createElement('li');item.textContent=issueMessage(issue);list.append(item);}
-    list.hidden=!issues.length;
+    if(needsReview){
+      const checks=(record.visualReview?.pieces||[]).filter(item=>!item.approved&&item.issues).sort((a,b)=>(a.piece===studio.index?-1:b.piece===studio.index?1:a.piece-b.piece));
+      for(const check of checks.slice(0,5)){const item=document.createElement('li');item.textContent=`Pieza ${check.piece+1}: ${check.issues}`;list.append(item);}
+    }
+    list.hidden=!list.childElementCount;
     $('#posts-retry-review').hidden=!needsReview||invalid||record.renderStatus==='needs-adjustment';
   }
   function error(message = '') { $('#posts-error').textContent = message; $('#posts-error').hidden = !message; }
@@ -128,13 +132,13 @@ export function createSocialStudio({ api, state, notify, escapeHtml: h, formatDa
   function readInspector() {
     if (!studio.draft) return;
     const post = studio.draft.posts[studio.index];
-    Object.assign(post, { layout: $('#posts-edit-layout').value, design:{...(post.design||{}),palette:$('#posts-edit-palette').value,background:$('#posts-edit-background').value,imagePosition:$('#posts-edit-image-position').value,imageShare:$('#posts-edit-image-share').value,align:$('#posts-edit-alignment').value,panel:$('#posts-edit-panel').value}, eyebrow: $('#posts-edit-eyebrow').value, headline: $('#posts-edit-headline').value, body: $('#posts-edit-body').value, bullets: $('#posts-edit-bullets').value.split('\n').map(value => value.trim()).filter(Boolean), cta: $('#posts-edit-cta').value, altText: $('#posts-edit-alt').value });
+    Object.assign(post, { layout: $('#posts-edit-layout').value, design:{...(post.design||{}),palette:$('#posts-edit-palette').value,spacing:$('#posts-edit-spacing').value,headlineScale:$('#posts-edit-headline-scale').value,background:$('#posts-edit-background').value,imagePosition:$('#posts-edit-image-position').value,imageShare:$('#posts-edit-image-share').value,align:$('#posts-edit-alignment').value,panel:$('#posts-edit-panel').value}, eyebrow: $('#posts-edit-eyebrow').value, headline: $('#posts-edit-headline').value, body: $('#posts-edit-body').value, bullets: $('#posts-edit-bullets').value.split('\n').map(value => value.trim()).filter(Boolean), cta: $('#posts-edit-cta').value, altText: $('#posts-edit-alt').value });
   }
   function fillInspector() {
     const post = studio.draft.posts[studio.index];
     for (const key of ['layout', 'eyebrow', 'headline', 'body', 'cta']) $(`#posts-edit-${key}`).value = post[key] || '';
     $('#posts-edit-palette').value=post.design?.palette||(['typographic','steps','frame'].includes(post.layout)?'navy-gold':'editorial');
-    for(const [id,key,fallback] of [['background','background','auto'],['image-position','imagePosition','auto'],['image-share','imageShare','balanced'],['alignment','align','left'],['panel','panel','plain']])$(`#posts-edit-${id}`).value=post.design?.[key]||fallback;
+    for(const [id,key,fallback] of [['spacing','spacing','balanced'],['headline-scale','headlineScale','balanced'],['background','background','auto'],['image-position','imagePosition','auto'],['image-share','imageShare','balanced'],['alignment','align','left'],['panel','panel','plain']])$(`#posts-edit-${id}`).value=post.design?.[key]||fallback;
     $('#posts-edit-bullets').value = (post.bullets || []).join('\n'); $('#posts-edit-alt').value = post.altText || '';
     $('#posts-piece-label').textContent = `Pieza ${studio.index + 1} de ${studio.draft.count}`;
     setFileLink($('#posts-download-png'),filesOf(studio.draft).png[studio.index],true);
@@ -221,7 +225,7 @@ export function createSocialStudio({ api, state, notify, escapeHtml: h, formatDa
         if(/^scale\(\d+(?:\.\d+)?\)$/.test(item.transform||''))node.setAttribute('transform',item.transform);
       }else if(item.type==='image'){
         const source=base64(previewAssets.images[item.assetId]);if(!source)throw Error('PREVIEW_ASSETS_UNAVAILABLE');
-        node=element('image',{x:number(item.x),y:number(item.y),width:number(item.w),height:number(item.h),href:`data:image/png;base64,${source}`,preserveAspectRatio:item.fit==='contain'?'xMidYMid meet':'xMidYMid slice'});
+        node=element('image',{x:number(item.x),y:number(item.y),width:number(item.w),height:number(item.h),href:`data:image/png;base64,${source}`,preserveAspectRatio:item.fit==='contain'?'xMidYMid meet':item.crop==='top'?'xMidYMin slice':'xMidYMid slice'});
       }else if(item.type==='text'){
         node=element('g');
         for(const line of item.lines||[]){const run=element('text',{x:number(line.x),y:number(line.baseline),'font-family':item.font==='heading'?'EJCaslon':'EJBahnschrift','font-size':number(item.size),'font-style':item.font==='heading'?'italic':'normal','font-weight':item.font==='heading'?400:300,fill:color(item.color),'xml:space':'preserve'});run.textContent=String(line.text||'');node.append(run);}
