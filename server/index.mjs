@@ -23,6 +23,9 @@ import { registerContentEditorRoutes, pendingFieldIds, replaceTemplateText, edit
 import { registerContactFormRoute } from './contact-form.mjs';
 import { createContactRepository } from './contact-store.mjs';
 import { cmsPermissions, cmsRequestAllowed } from './cms-permissions.mjs';
+import { registerStudioTrashRoutes } from './studio-trash.mjs';
+import { createStudioJobs } from './studio-jobs.mjs';
+import { readStudioState, writeStudioState, listStudioRecords } from './studio-state.mjs';
 
 const ROOT = process.cwd();
 const PORT = Number(process.env.PORT || 3000);
@@ -960,11 +963,11 @@ app.get('/api/cms/activity', requireAuth, (_req, res) => {
   res.json({ activity: store.audit.slice(0, 100) });
 });
 
-app.get('/api/cms/signatures', requireAuth, (_req, res) => {
-  res.json({ signatures: store.signatures.map(signature => ({ ...signature, email: canonicalBrandEmail(signature.email) })) });
+app.get('/api/cms/signatures', requireAuth, (req, res) => {
+  res.json({ signatures: store.signatures.filter(item=>req.query.includeDeleted==='1'||!item.deletedAt).map(signature => ({ ...signature, email: canonicalBrandEmail(signature.email) })) });
 });
 
-app.post('/api/cms/signatures', requireAuth, requireEditor, requireCsrf, (req, res) => {
+app.post('/api/cms/signatures', requireAuth, requireEditor, requireCsrf, async (req, res) => {
   const input = req.body || {};
   const clean = (value, max) => String(value || '').trim().slice(0, max);
   const signature = {
@@ -982,15 +985,14 @@ app.post('/api/cms/signatures', requireAuth, requireEditor, requireCsrf, (req, r
   };
   if (!signature.name || !signature.email || !/^\S+@\S+\.\S+$/.test(signature.email)) return res.status(422).json({ error: 'SIGNATURE_FIELDS_INVALID' });
   store.signatures.unshift(signature);
-  store.signatures = store.signatures.slice(0, 200);
   audit('signature.create', req.cmsUser, { signatureId: signature.id, name: signature.name });
-  writeStore();
+  await writeStore();
   res.status(201).json({ signature });
 });
 
-app.patch('/api/cms/signatures/:id', requireAuth, requireEditor, requireCsrf, (req, res) => {
+app.patch('/api/cms/signatures/:id', requireAuth, requireEditor, requireCsrf, async (req, res) => {
   const signature = store.signatures.find((item) => item.id === req.params.id);
-  if (!signature) return res.status(404).json({ error: 'SIGNATURE_NOT_FOUND' });
+  if (!signature || signature.deletedAt) return res.status(404).json({ error: 'SIGNATURE_NOT_FOUND' });
   const clean = (value, max) => String(value || '').trim().slice(0, max);
   for (const [key, max] of Object.entries({ name: 160, role: 160, phone: 80, email: 254, address1: 180, address2: 180, baseUrl: 500 })) {
     if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) signature[key] = clean(req.body[key], max);
@@ -999,18 +1001,11 @@ app.patch('/api/cms/signatures/:id', requireAuth, requireEditor, requireCsrf, (r
   if (!signature.name || !/^\S+@\S+\.\S+$/.test(signature.email)) return res.status(422).json({ error: 'SIGNATURE_FIELDS_INVALID' });
   signature.updatedAt = now();
   audit('signature.update', req.cmsUser, { signatureId: signature.id });
-  writeStore();
+  await writeStore();
   res.json({ signature });
 });
 
-app.delete('/api/cms/signatures/:id', requireAuth, requireEditor, requireCsrf, (req, res) => {
-  const index = store.signatures.findIndex((item) => item.id === req.params.id);
-  if (index === -1) return res.status(404).json({ error: 'SIGNATURE_NOT_FOUND' });
-  const [signature] = store.signatures.splice(index, 1);
-  audit('signature.delete', req.cmsUser, { signatureId: signature.id });
-  writeStore();
-  res.status(204).end();
-});
+registerStudioTrashRoutes(app,{base:'/api/cms/signatures',getRecord:async id=>store.signatures.find(item=>item.id===id),saveRecord:async record=>{store.signatures=store.signatures.map(item=>item.id===record.id?record:item);},requireAuth,requireEditor,requireCsrf,audit,writeStore,action:'signature'});
 
 function publicPresentationItem(item) {
   const id = encodeURIComponent(item.id);
@@ -1047,12 +1042,16 @@ function publicPresentationItem(item) {
   };
 }
 
-app.get('/api/cms/presentations', requireAuth, (req, res) => {
+const presentationJobs=createStudioJobs('presentations',publicPresentationItem);
+const getPresentation=async id=>await readStudioState('presentations',id)||(store.presentations||[]).find(item=>item.id===id);
+app.get('/api/cms/presentations', requireAuth, async (req, res) => {
+  store.presentations=await listStudioRecords('presentations',store.presentations||[]);
   res.json({
     presentations: (store.presentations || []).map(publicPresentationItem),
-    generator: presentationModels()
+    generator: presentationModels(),activeJob:await presentationJobs.active(req)
   });
 });
+app.get('/api/cms/presentations/jobs/:id',requireAuth,async(req,res)=>{const job=await presentationJobs.read(req,req.params.id);if(!job)return res.status(404).json({error:'PRESENTATION_JOB_NOT_FOUND'});res.json({job});});
 
 const presentationUpload = multer({
   storage: multer.diskStorage({
@@ -1091,29 +1090,32 @@ app.post('/api/cms/presentations/generate', requireAuth, requireEditor, requireC
     try { formats = typeof body.formats === 'string' ? JSON.parse(body.formats) : body.formats; } catch { /* validated below */ }
     if (!Array.isArray(formats) || !formats.length || formats.some(format => !['pptx', 'pdf', 'png'].includes(format))) throw presentationInputError('Selecciona al menos un formato de descarga.', 'PRESENTATION_FORMAT_REQUIRED');
     const enabled = value => value === true || value === 'true';
-    const result = await generatePresentation({
+    const options={
       topic: topic || 'Presentación basada en documentos', sourceText, slideCount,
       language: body.language === 'en' ? 'en' : 'es',
       style: ['corporate', 'editorial', 'dark'].includes(body.style) ? body.style : 'corporate',
       branding: body.branding === 'minimal' ? 'minimal' : 'firm',
       includeVisuals: enabled(body.includeVisuals), includeImage: enabled(body.includeImage), webSearch: enabled(body.webSearch),
       formats, documentNames: inputs.documentNames, supportImages: inputs.supportImages
-    });
-    const record = { ...result, createdBy: req.cmsUser.email };
-    store.presentations = [record, ...(store.presentations || [])].slice(0, 100);
-    audit('presentation.create', req.cmsUser, { presentationId: record.id, slideCount: record.slideCount, aiUsed: record.aiUsed, model: record.model, brandProfile: record.brandProfile, documentCount: record.documentNames.length });
-    writeStore();
-    res.status(201).json({ presentation: publicPresentationItem(record) });
+    };
+    const work=async(progress=()=>{})=>{
+      const result=await generatePresentation(options,progress),record={...result,createdBy:req.cmsUser.email};
+      progress('Guardando la presentación y sus descargas',0,1,'save');await writeStudioState('presentations',record.id,record);
+      store.presentations=[record,...(store.presentations||[]).filter(item=>item.id!==record.id)];
+      audit('presentation.create',req.cmsUser,{presentationId:record.id,slideCount:record.slideCount,aiUsed:record.aiUsed,model:record.model,brandProfile:record.brandProfile,documentCount:record.documentNames.length});await writeStore();return record;
+    };
+    if(enabled(body.async)){const job=await presentationJobs.enqueue(req,work);res.status(202).json({job});}
+    else res.status(201).json({presentation:publicPresentationItem(await work())});
   } catch (error) {
-    console.error('[presentation-agent] generation failed', error.code || error.message);
-    res.status(error.status || 500).json({ error: error.code || 'PRESENTATION_GENERATION_FAILED', detail: error.message });
+    safeLog('error','presentation.generation.failed',error);
+    res.status(error.status || 500).json(publicFailure(error,'PRESENTATION_GENERATION_FAILED'));
   } finally {
     await cleanupPresentationInputs(req.files);
   }
 });
 
 app.get('/api/cms/presentations/:id/file/:kind', requireAuth, async (req, res, next) => {
-  const item = (store.presentations || []).find((candidate) => candidate.id === req.params.id);
+  const item = await getPresentation(req.params.id);
   if (!item) return res.status(404).json({ error: 'PRESENTATION_NOT_FOUND' });
   const kind = String(req.params.kind || '').toLowerCase();
   let file = null;

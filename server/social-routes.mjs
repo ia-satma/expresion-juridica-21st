@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
 import { writeStudioState, readStudioState, listStudioPosts } from './studio-state.mjs';
-import { generateSocialSet, normalizeSocialEdits, regenerateSocialCopy, renderSocialSet, readSocialFile, socialModels, SOCIAL_SIZES } from './social-generator.mjs';
+import { generateSocialSet, normalizeSocialEdits, regenerateSocialCopy, redesignSocialSet, renderSocialSet, readSocialFile, socialModels, SOCIAL_SIZES } from './social-generator.mjs';
+import { SOCIAL_PALETTE_CHOICES } from './social-design.mjs';
+import { registerStudioTrashRoutes } from './studio-trash.mjs';
 import { preparePresentationInputs, cleanupPresentationInputs, presentationInputError } from './presentation-inputs.mjs';
 import { publicFailure, safeErrorCode, safeLog } from './security-logging.mjs';
 
@@ -11,12 +13,12 @@ export function registerSocialRoutes(app, { store, writeStore, requireAuth, requ
     id: item.id, title: item.title, topic: item.topic, count: item.count, mode: item.mode, size: item.size,
     direction: item.direction, language: item.language, aiUsed: item.aiUsed, model: item.model,
     imageModel: item.imageModel, generatedImageCount: item.generatedImageCount, brandProfile: item.brandProfile,
-    createdAt: item.createdAt, updatedAt: item.updatedAt, sources: item.sources || [], copies: item.copies,
+    createdAt: item.createdAt, updatedAt: item.updatedAt, deletedAt:item.deletedAt||null, requestedPalette:item.requestedPalette||'auto', designNotes:item.designNotes||'', referenceId:item.referenceId||null, sources: item.sources || [], copies: item.copies,
     posts: item.posts.map(({ artwork, imagePrompt, ...post }) => ({ ...post, hasArtwork: Boolean(artwork) })),
     files: { png: item.files.png.map((_, index) => `/api/cms/posts/${item.id}/file/png?piece=${index}`), html: item.files.html.map((_, index) => `/api/cms/posts/${item.id}/file/html?piece=${index}`), pack: `/api/cms/posts/${item.id}/file/pack`, copy: `/api/cms/posts/${item.id}/file/copy` }
   });
   const userKey = req => String(req.cmsUser.id || req.cmsUser.email);
-  const jobPayload = job => ({ id: job.id, state: job.state, message: job.message, completed: job.completed, total: job.total, result: job.result || null, error: job.error ? safeErrorCode(job.error, 'POST_GENERATION_FAILED') : null });
+  const jobPayload = job => ({ id: job.id, state: job.state, stage:job.stage, created:job.created, message: job.message, completed: job.completed, total: job.total, result: job.result || null, error: job.error ? safeErrorCode(job.error, 'POST_GENERATION_FAILED') : null });
   const ownerKey = req => crypto.createHash('sha256').update(userKey(req)).digest('hex');
   const persistJob = (job, force = false) => {
     const now = Date.now();
@@ -46,13 +48,13 @@ export function registerSocialRoutes(app, { store, writeStore, requireAuth, requ
     const pointer = await readStudioState('owners', ownerKey(req));
     const active = pointer?.jobId ? await getJob(req, pointer.jobId) : null;
     if (active && ['queued', 'running'].includes(active.state)) throw presentationInputError('Ya hay una generación en curso. Espera a que termine.', 'POST_JOB_ACTIVE', 409);
-    const job = { id: crypto.randomUUID(), owner, state: 'queued', message: 'Preparando el estudio', completed: 0, total: 1, created: Date.now() };
+    const job = { id: crypto.randomUUID(), owner, state: 'queued', stage:'prepare', message: 'Revisando los insumos', completed: 0, total: 1, created: Date.now() };
     jobs.set(job.id, job);
     await Promise.all([persistJob(job, true), writeStudioState('owners', ownerKey(req), { jobId: job.id })]);
-    const progress = (message, completed = 0, total = 1) => { Object.assign(job, { state: 'running', message, completed, total, updatedAt: Date.now() }); persistJob(job).catch(error => console.error('[social-job-state]', error.message)); };
+    const progress = (message, completed = 0, total = 1, stage='content') => { Object.assign(job, { state: 'running', stage, message, completed, total, updatedAt: Date.now() }); persistJob(job).catch(error => console.error('[social-job-state]', error.message)); };
     const heartbeat = setInterval(() => { job.updatedAt = Date.now(); persistJob(job, true).catch(error => console.error('[social-heartbeat]', error.message)); }, 20000); heartbeat.unref();
     Promise.resolve().then(() => work(progress)).then(async record => {
-      Object.assign(job, { state: 'complete', result: publicSet(record), message: 'Diseños y copy listos', completed: record.count, total: record.count, finished: Date.now() });
+      Object.assign(job, { state: 'complete', stage:'save', result: publicSet(record), message: 'Diseños y copy listos', completed: record.count, total: record.count, finished: Date.now() });
       await persistJob(job, true);
     }).catch(async error => {
       safeLog('error', 'social.generation.failed', error);
@@ -70,7 +72,7 @@ export function registerSocialRoutes(app, { store, writeStore, requireAuth, requ
       store.socialPosts = await listStudioPosts(store.socialPosts);
       const pointer = await readStudioState('owners', ownerKey(req));
       const job = pointer?.jobId ? await getJob(req, pointer.jobId) : null;
-      res.json({ posts: store.socialPosts.map(publicSet), generator: socialModels(), activeJob: job && ['queued', 'running'].includes(job.state) ? jobPayload(job) : null });
+      res.json({ posts: store.socialPosts.filter(item=>req.query.includeDeleted==='1'||!item.deletedAt).map(publicSet), generator: socialModels(), activeJob: job && ['queued', 'running'].includes(job.state) ? jobPayload(job) : null });
     } catch (error) { fail(res, error); }
   });
   app.get('/api/cms/posts/jobs/:id', requireAuth, async (req, res) => {
@@ -93,13 +95,14 @@ export function registerSocialRoutes(app, { store, writeStore, requireAuth, requ
       if (!Number.isInteger(count) || count < 1 || count > 20) throw presentationInputError('Elige entre 1 y 20 piezas.');
       const size = body.size || 'portrait';
       if (!SOCIAL_SIZES[size]) throw presentationInputError('Elige un formato de imagen disponible.');
+      const palette=String(body.palette||'auto');if(!SOCIAL_PALETTE_CHOICES.includes(palette))throw presentationInputError('Elige una paleta del sistema EJ.');
       const enabled = value => value === true || value === 'true';
       const job = await enqueue(req, async progress => {
-        const result = await generateSocialSet({ topic: topic || 'Publicación basada en documentos', sourceText, count, size, direction: String(body.direction || 'varied').slice(0, 100), language: body.language === 'en' ? 'en' : 'es', includeImages: enabled(body.includeImages), webSearch: enabled(body.webSearch), supportImages: inputs.supportImages, documentNames: inputs.documentNames }, progress);
+        const result = await generateSocialSet({ topic: topic || 'Publicación basada en documentos', sourceText, count, size, palette, direction: String(body.direction || 'varied').slice(0, 100), language: body.language === 'en' ? 'en' : 'es', includeImages: enabled(body.includeImages), webSearch: enabled(body.webSearch), supportImages: inputs.supportImages, documentNames: inputs.documentNames }, progress);
         const record = { ...result, createdBy: req.cmsUser.email };
-        await saveRecord(record);
+        progress('Guardando el diseño y el copy en tu biblioteca',0,1,'save');await saveRecord(record);
         audit('social.create', req.cmsUser, { campaignId: record.id, count, model: record.model, brandProfile: record.brandProfile });
-        writeStore(); return record;
+        await writeStore(); return record;
       });
       res.status(202).json({ job: jobPayload(job) });
     } catch (error) { fail(res, error); }
@@ -107,7 +110,7 @@ export function registerSocialRoutes(app, { store, writeStore, requireAuth, requ
   });
   app.patch('/api/cms/posts/:id', requireAuth, requireEditor, requireCsrf, async (req, res) => {
     const original = await getRecord(req.params.id);
-    if (!original) return res.status(404).json({ error: 'POST_NOT_FOUND' });
+    if (!original || original.deletedAt) return res.status(404).json({ error: 'POST_NOT_FOUND' });
     try {
       if (req.body.version && req.body.version !== original.updatedAt) throw presentationInputError('Otra edición cambió este diseño. Actualiza el historial y abre la versión más reciente.', 'POST_VERSION_CHANGED', 409);
       const edited = normalizeSocialEdits(original, req.body);
@@ -115,29 +118,43 @@ export function registerSocialRoutes(app, { store, writeStore, requireAuth, requ
         const record = await renderSocialSet(edited, new Map(), progress);
         const latest = await getRecord(original.id);
         if (!latest || latest.updatedAt !== original.updatedAt) throw new Error('POST_VERSION_CHANGED');
-        await saveRecord(record); audit('social.update', req.cmsUser, { campaignId: record.id }); writeStore(); return record;
+        progress('Guardando los cambios del diseño',0,1,'save');await saveRecord(record); audit('social.update', req.cmsUser, { campaignId: record.id }); await writeStore(); return record;
       });
       res.status(202).json({ job: jobPayload(job) });
     } catch (error) { fail(res, error); }
   });
   app.post('/api/cms/posts/:id/copy', requireAuth, requireEditor, requireCsrf, async (req, res) => {
     const original = await getRecord(req.params.id);
-    if (!original) return res.status(404).json({ error: 'POST_NOT_FOUND' });
+    if (!original || original.deletedAt) return res.status(404).json({ error: 'POST_NOT_FOUND' });
     try {
       const job = await enqueue(req, async progress => {
-        progress('Sol está actualizando el copy para cada red', 0, 1);
+        progress('Sol está actualizando el copy para cada red', 0, 1, 'content');
         const copies = await regenerateSocialCopy(original);
         const record = await renderSocialSet({ ...original, copies }, new Map(), progress);
         const latest = await getRecord(original.id);
         if (!latest || latest.updatedAt !== original.updatedAt) throw new Error('POST_VERSION_CHANGED');
-        await saveRecord(record); audit('social.copy', req.cmsUser, { campaignId: record.id, model: socialModels().textModel }); writeStore(); return record;
+        progress('Guardando el copy actualizado',0,1,'save');await saveRecord(record); audit('social.copy', req.cmsUser, { campaignId: record.id, model: socialModels().textModel }); await writeStore(); return record;
       });
       res.status(202).json({ job: jobPayload(job) });
     } catch (error) { fail(res, error); }
   });
+  app.post('/api/cms/posts/:id/redesign',requireAuth,requireEditor,requireCsrf,async(req,res)=>{
+    try{
+      const original=await getRecord(req.params.id);if(!original||original.deletedAt)return res.status(404).json({error:'POST_NOT_FOUND'});
+      if(req.body?.version&&req.body.version!==original.updatedAt)return res.status(409).json({error:'POST_VERSION_CHANGED'});
+      const palette=String(req.body?.palette||'auto');if(!SOCIAL_PALETTE_CHOICES.includes(palette))throw presentationInputError('Elige una paleta del sistema EJ.');
+      const job=await enqueue(req,async progress=>{
+        const result=await redesignSocialSet(original,{instructions:String(req.body?.instructions||'').slice(0,3000),palette},progress);
+        const latest=await getRecord(original.id);if(!latest||latest.deletedAt||latest.updatedAt!==original.updatedAt)throw new Error('POST_VERSION_CHANGED');
+        const record={...result,createdBy:req.cmsUser.email};progress('Guardando una nueva versión del diseño',0,1,'save');await saveRecord(record);
+        audit('social.redesign',req.cmsUser,{campaignId:record.id,referenceId:original.id,model:record.model});await writeStore();return record;
+      });res.status(202).json({job:jobPayload(job)});
+    }catch(error){fail(res,error);}
+  });
+  registerStudioTrashRoutes(app,{base:'/api/cms/posts',getRecord,saveRecord,serialize:publicSet,requireAuth,requireEditor,requireCsrf,audit,writeStore,action:'social'});
   app.get('/api/cms/posts/:id/file/:kind', requireAuth, async (req, res, next) => {
     const item = await getRecord(req.params.id);
-    if (!item) return res.status(404).json({ error: 'POST_NOT_FOUND' });
+    if (!item || item.deletedAt) return res.status(404).json({ error: 'POST_NOT_FOUND' });
     const index = Number(req.query.piece || 0), kind = req.params.kind;
     const file = ['png', 'html'].includes(kind) ? Number.isInteger(index) ? item.files[kind]?.[index] : null : ['pack', 'copy'].includes(kind) ? item.files[kind] : null;
     if (!file) return res.status(404).json({ error: 'POST_FILE_NOT_FOUND' });

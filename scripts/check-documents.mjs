@@ -82,6 +82,10 @@ try {
   const normalizedZip = await JSZip.loadAsync(await (await fetch(base + organized.files.docx, { headers })).arrayBuffer()), normalizedXml = await normalizedZip.file('word/document.xml').async('string'); assert.match(normalizedXml, /w:numPr/);
   assert([...normalizedXml.matchAll(/<w:pPr>(.*?)<\/w:pPr>/g)].filter(match => /w:numPr|w:pStyle w:val="Heading/.test(match[1])).every(match => match[1].includes('w:jc w:val="left"')));
   assert.match(calls[0].instructions, /Official institutional email: Consultoria@expresionjuridica\.com/);
-  console.log(JSON.stringify({ passed: true, fullTextPreserved: true, editableDocx: true, embeddedFonts: 2, pdfPages: result.pageCount, brandOnEveryPage: true, durableHistoryAndJobs: true, editsWithoutAi: true, optionalSol: true, output }));
+  const removed=await json(`/api/cms/documents/${organized.id}`,{method:'DELETE',body:JSON.stringify({version:organized.updatedAt})});assert.equal(removed.response.status,200);assert.equal(removed.data.recoverable,true);
+  assert(!(await json('/api/cms/documents')).data.documents.some(item=>item.id===organized.id));assert((await json('/api/cms/documents?includeDeleted=1',{},replicaBase)).data.documents.some(item=>item.id===organized.id&&item.deletedAt));
+  assert.equal((await fetch(base+organized.files.pdf,{headers})).status,404);
+  const restored=await json(`/api/cms/documents/${organized.id}/restore`,{method:'POST',body:JSON.stringify({version:removed.data.record.updatedAt})},replicaBase);assert.equal(restored.response.status,200);assert.equal((await fetch(base+organized.files.pdf,{headers})).status,200);
+  console.log(JSON.stringify({ passed: true, fullTextPreserved: true, editableDocx: true, embeddedFonts: 2, pdfPages: result.pageCount, brandOnEveryPage: true, durableHistoryAndJobs: true, recoverableDelete:true,editsWithoutAi: true, optionalSol: true, output }));
   if (process.env.EJ_DOCUMENT_PREVIEW === '1') console.log(`PREVIEW ${base}/admin/#documents`);
 } finally { replica?.close(); if (process.env.EJ_DOCUMENT_PREVIEW !== '1') { server.close(); mock.close(); } }

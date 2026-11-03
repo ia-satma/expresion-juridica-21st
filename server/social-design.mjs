@@ -1,0 +1,18 @@
+import { EJ_BRAND as B } from './presentation-brand.mjs';
+
+export const SOCIAL_PALETTES = {
+  'navy-gold': { label:'Azul y dorado', background:B.navy, ink:B.paper, title:B.gold, accent:B.gold, muted:B.gray, dark:true },
+  editorial: { label:'Blanco editorial', background:B.white, ink:B.navy, title:B.navy, accent:B.gold, muted:'#636979', dark:false },
+  ivory: { label:'Marfil y azul', background:'#F7F2E8', ink:B.navy, title:B.navy, accent:'#B08D57', muted:'#69645A', dark:false },
+  graphite: { label:'Grafito y dorado', background:B.night, ink:B.paper, title:B.paper, accent:B.gold, muted:B.gray, dark:true }
+};
+export const SOCIAL_PALETTE_CHOICES=['auto','mixed',...Object.keys(SOCIAL_PALETTES)];
+export const PHOTO_LAYOUTS=['split','photographic','photo-side','photo-editorial'];
+export const socialDesignSchema={type:'object',additionalProperties:false,properties:{palette:{type:'string',enum:Object.keys(SOCIAL_PALETTES)},spacing:{type:'string',enum:['balanced','generous']},headlineScale:{type:'string',enum:['compact','balanced','expressive']}},required:['palette','spacing','headlineScale']};
+export function normalizeSocialDesign(value={},layout='editorial',index=0,requested='auto') {
+  const fallback=['typographic','steps','frame'].includes(layout)?'navy-gold':'editorial';
+  return {palette:SOCIAL_PALETTES[requested]?requested:SOCIAL_PALETTES[value?.palette]?value.palette:requested==='mixed'?['navy-gold','editorial','ivory','graphite'][index%4]:fallback,spacing:value?.spacing==='generous'?'generous':'balanced',headlineScale:['compact','expressive'].includes(value?.headlineScale)?value.headlineScale:'balanced'};
+}
+export function socialArtDirection({count=1,hasImages=false,palette='auto',direction='varied',size='portrait'}={}) {
+  return `Work as a senior graphic designer and art director, not a form-filling copywriter. Decide hierarchy, visual rhythm, contrast, negative space and photograph placement before returning the final composition. Keep the approved EJ logo unaltered and typography fixed. Palette families are: navy-gold (institutional navy, pale gold, light text), editorial (white, navy text, gold accents), ivory (a very light gold tint, navy text, restrained gold), graphite (near black blue, white and pale gold). Requested palette: ${palette}. ${palette==='mixed'?'Create a coordinated sequence using more than one of these palette families.':palette==='auto'?'Choose the family that best serves each piece and the material; use coherent variation for a carousel.':'Use the requested family on every piece.'} Requested visual direction: ${direction}. ${hasImages?'Photographs are available or will be generated: choose photo-capable layouts from split, photographic, photo-side and photo-editorial. Spread image positions and editorial hierarchy across the set; do not force all pieces into the same photo template.':'Prefer strong typography, editorial grids, quotes or steps; do not assume a photograph exists.'} ${count>1?'Treat the carousel as a designed sequence: a compelling cover, readable middle and clear closing. Avoid consecutive composition repeats when the material permits.':'Make the standalone piece feel complete and intentional.'} Format: ${size}. The compact horizontal format needs very little text. Use generous spacing when the message is short, expressive headlines for a concise hook and compact headlines when the wording is longer. Review your choices for readability on a phone, optical balance and consistency with the EJ graphic system; revise weak choices before returning the structured result. Do not invent words inside photographs, change facts, use arbitrary brand colors, decorative gradients or redraw the logo.`;
+}

@@ -1,7 +1,10 @@
+import { createGenerationProgress } from './generation-progress.js?v=20261103-studio4';
+import { confirmLibraryRemoval } from './library-actions.js?v=20261103-studio4';
 export function createDocumentStudio({ api, state, notify, escapeHtml: h, formatDate }) {
   const $ = selector => document.querySelector(selector);
   if (!$('#documents-form')) return { load: async () => {} };
-  const studio = { library: [], saved: null, editor: null, busy: false, dirty: false, configured: false, loading: null, job: null };
+  const studio = { library: [], saved: null, editor: null, busy: false, dirty: false, configured: false, loading: null, job: null, trash:false };
+  const progress=createGenerationProgress($('#documents-progress'),'document');
   const canEdit = () => ['owner', 'editor'].includes(state.user?.role);
   function error(message = '') { $('#documents-error').textContent = message; $('#documents-error').hidden = !message; }
   function sync() {
@@ -41,29 +44,35 @@ export function createDocumentStudio({ api, state, notify, escapeHtml: h, format
     }
   }
   function history() {
-    $('#documents-history').innerHTML = studio.library.map(item => `<div class="document-history-row"><div><h3>${h(item.title)}</h3><p>${item.pageCount} ${item.pageCount === 1 ? 'página' : 'páginas'} · ${h(formatDate(item.updatedAt))}</p></div><button class="button button-secondary" type="button" data-document-id="${h(item.id)}">Abrir documento</button></div>`).join('') || '<p class="empty-state">Aquí aparecerán tus documentos con membrete.</p>';
-    for (const button of $('#documents-history').querySelectorAll('button')) button.addEventListener('click', () => { const item = studio.library.find(item => item.id === button.dataset.documentId); open(item).catch(failure => error(explain(failure))); });
+    const items=studio.library.filter(item=>Boolean(item.deletedAt)===studio.trash);
+    $('#documents-trash-toggle').textContent=studio.trash?'Volver a documentos':'Ver papelera';$('#documents-trash-toggle').setAttribute('aria-pressed',String(studio.trash));
+    $('#documents-history').innerHTML = items.map(item => `<div class="document-history-row"><div><h3>${h(item.title)}</h3><p>${item.pageCount} ${item.pageCount === 1 ? 'página' : 'páginas'} · ${h(formatDate(item.updatedAt))}</p></div><div class="library-row-actions">${studio.trash?`<button class="button button-secondary" type="button" data-restore-document="${h(item.id)}" ${!canEdit()?'disabled':''}>Restaurar</button>`:`<button class="button button-secondary" type="button" data-document-id="${h(item.id)}">Abrir documento</button><button class="text-action library-trash-action" type="button" data-delete-document="${h(item.id)}" ${!canEdit()?'disabled':''}>Eliminar</button>`}</div></div>`).join('') || `<p class="empty-state">${studio.trash?'La papelera está vacía.':'Aquí aparecerán tus documentos con membrete.'}</p>`;
+    for (const button of $('#documents-history').querySelectorAll('[data-document-id]')) button.addEventListener('click', () => { const item = studio.library.find(item => item.id === button.dataset.documentId); open(item).catch(failure => error(explain(failure))); });
+    for(const button of $('#documents-history').querySelectorAll('[data-delete-document],[data-restore-document]'))button.addEventListener('click',async()=>{
+      if(studio.busy)return;const restore=Boolean(button.dataset.restoreDocument),id=button.dataset.restoreDocument||button.dataset.deleteDocument,item=studio.library.find(item=>item.id===id);
+      if(!item||!restore&&!await confirmLibraryRemoval(item.title))return;studio.busy=true;sync();button.disabled=true;
+      try{await api(`/api/cms/documents/${id}${restore?'/restore':''}`,{method:restore?'POST':'DELETE',body:{version:item.updatedAt}});if(studio.saved?.id===id){studio.editor?.destroy();studio.editor=null;studio.saved=null;studio.dirty=false;$('#documents-result').hidden=true;}notify(restore?'Documento restaurado.':'Documento movido a la papelera.');await load();}catch(failure){error(explain(failure));}finally{studio.busy=false;sync();}
+    });
   }
   function upsert(item) { studio.library = [item, ...studio.library.filter(record => record.id !== item.id)]; history(); }
   async function poll(job) {
-    studio.busy = true; studio.job = job.id; sync(); $('#documents-progress').hidden = false;
+    studio.busy = true; studio.job = job.id; sync();if($('#documents-progress').hidden||$('#documents-progress').dataset.state!=='running')progress.start({includeImages:false,created:job.created});
     try {
       for (;;) {
-        $('#documents-progress-message').textContent = job.message;
-        $('#documents-progress-bar').value = Math.max(0, Number(job.completed || 0)); $('#documents-progress-bar').max = Math.max(1, Number(job.total || 1));
-        if (job.state === 'complete') { studio.busy = false; studio.dirty = false; upsert(job.result); await open(job.result); notify('Documento guardado. DOCX y PDF listos.'); break; }
+        progress.update(job);
+        if (job.state === 'complete') {progress.finish('Documento guardado. Word editable y PDF listos.'); studio.busy = false; studio.dirty = false; upsert(job.result); await open(job.result); notify('Documento guardado. DOCX y PDF listos.'); break; }
         if (job.state === 'failed') throw new Error(job.error || 'DOCUMENT_GENERATION_FAILED');
         await new Promise(resolve => setTimeout(resolve, 1800));
         job = (await api(`/api/cms/documents/jobs/${studio.job}`)).job;
       }
-    } catch (failure) { error(explain(failure)); }
-    finally { studio.busy = false; studio.job = null; $('#documents-progress').hidden = true; sync(); }
+    } catch (failure) { error(explain(failure));progress.fail(explain(failure)); }
+    finally { studio.busy = false; studio.job = null; sync(); }
   }
   async function load() {
     if (studio.loading) return studio.loading;
     studio.loading = (async () => {
       try {
-        const result = await api('/api/cms/documents'); studio.library = result.documents || []; studio.configured = result.generator?.aiConfigured;
+        const result = await api('/api/cms/documents?includeDeleted=1'); studio.library = result.documents || []; studio.configured = result.generator?.aiConfigured;
         $('#documents-config').textContent = `Membrete original de Expresión Jurídica · Carta · ${studio.configured ? `Agente: ${result.generator.textModel}` : 'Puedes crear documentos sin IA. Añade OPENAI_API_KEY para organizar con Sol.'}`;
         $('#documents-mode').querySelector('[value="organize"]').disabled = !studio.configured;
         history(); sync(); if (result.activeJob && !studio.job) await poll(result.activeJob);
@@ -74,18 +83,21 @@ export function createDocumentStudio({ api, state, notify, escapeHtml: h, format
     event.preventDefault(); if (studio.busy) return;
     if (studio.dirty) { error('Guarda o restablece la edición actual antes de crear otro documento.'); return; }
     error(); studio.busy = true; sync();
+    progress.start({includeImages:false});$('#documents-progress').scrollIntoView({behavior:'smooth',block:'center'});
     try { const response = await api('/api/cms/documents/generate', { method: 'POST', body: { title: $('#documents-title').value, text: $('#documents-source').value, mode: $('#documents-mode').value, instructions: $('#documents-instructions').value } }); await poll(response.job); }
-    catch (failure) { error(explain(failure)); studio.busy = false; sync(); }
+    catch (failure) { error(explain(failure));progress.fail(explain(failure)); studio.busy = false; sync(); }
   });
   $('#documents-save').addEventListener('click', async () => {
     if (!studio.saved || studio.busy) return; error(); studio.busy = true; sync();
+    progress.start({includeImages:false,title:'Guardando tu documento',message:'Aplicando los ajustes al membrete y las descargas…'});
     try { const response = await api(`/api/cms/documents/${studio.saved.id}`, { method: 'PATCH', body: { document: studio.editor.getJSON(), title: $('#documents-editor-title').value, version: studio.saved.updatedAt } }); await poll(response.job); }
-    catch (failure) { error(explain(failure)); studio.busy = false; sync(); }
+    catch (failure) { error(explain(failure));progress.fail(explain(failure)); studio.busy = false; sync(); }
   });
   $('#documents-revert').addEventListener('click', () => { if (studio.saved && !studio.busy) { studio.dirty = false; open(studio.saved).catch(failure => error(explain(failure))); } });
   $('#documents-editor-title').addEventListener('input', dirty);
   $('#documents-mode').addEventListener('change', sync);
   $('#documents-refresh').addEventListener('click', load);
+  $('#documents-trash-toggle').addEventListener('click',()=>{studio.trash=!studio.trash;history();});
   for (const link of document.querySelectorAll('#documents-downloads a')) link.addEventListener('click', event => { if (studio.dirty || studio.busy) { event.preventDefault(); notify('Guarda los cambios para actualizar las descargas.'); } });
   for (const button of document.querySelectorAll('#documents-toolbar [data-document-command]')) button.addEventListener('click', () => {
     if (!studio.editor || studio.busy || !canEdit()) return;

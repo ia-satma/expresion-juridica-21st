@@ -1,7 +1,9 @@
 import { createContentEditor, pageTitle } from "./content-editor.js?v=20261103-editable3";
 import { currentCmsCsrf } from "./csrf.js?v=20261102-studio2";
-import { createSocialStudio } from "./social.js?v=20261102-studio3";
-import { createDocumentStudio } from "./documents.js?v=20261102-studio";
+import { createSocialStudio } from "./social.js?v=20261103-studio4";
+import { createDocumentStudio } from "./documents.js?v=20261103-studio4";
+import { createGenerationProgress } from './generation-progress.js?v=20261103-studio4';
+import { confirmLibraryRemoval } from './library-actions.js?v=20261103-studio4';
 const state = {
   user: null,
   csrf: null,
@@ -19,6 +21,7 @@ const state = {
   users: [],
   submissions: [],
   signatures: [],
+  signaturesTrash:false,
   presentations: [],
   currentSignature: null,
   rolePermissions: {},
@@ -28,6 +31,7 @@ const state = {
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+const presentationProgress=createGenerationProgress($('#presentation-progress'),'presentation');
 const contentEditor = createContentEditor({
   api, canEdit: () => ['owner','editor'].includes(state.user?.role),
   onSaved: async () => { await updateDraftCount().catch(()=>{}); if (state.pages.length) { try { state.pages=(await api('/api/cms/pages')).pages; renderPageList(); } catch {} } },
@@ -301,7 +305,7 @@ function renderPageList() {
     const meta = categoryMeta[category] || { label: category, description: 'Contenido conectado del sitio.' };
     return `<section class="page-list-group"><div class="page-list-group-head"><div><p class="page-list-group-title">${escapeHtml(meta.label)}</p><small>${escapeHtml(meta.description)}</small></div><span class="page-list-group-count">${pages.length}</span></div>${pages.map((page) => `<button class="page-list-item ${state.selectedPage === page.page ? 'is-active' : ''}" data-page-route="${escapeHtml(page.page)}"><span class="page-list-item-copy"><strong>${escapeHtml(pageTitle(page))}</strong><small>${escapeHtml(page.page)}</small></span><span class="page-list-item-meta"><em>Editar contenido</em>${page.draftFields ? `<em class="has-draft">${page.draftFields} por confirmar</em>` : ''}</span></button>`).join('')}</section>`;
   }).join('');
-  $('#page-list').innerHTML = `<label class="content-mobile-page">Página<select id="page-mobile-select">${state.pages.map(page=>`<option value="${escapeHtml(page.page)}"${state.selectedPage===page.page?' selected':''}>${escapeHtml(pageTitle(page))}</option>`).join('')}</select></label><div class="page-list-heading"><div><p class="eyebrow">Mapa editorial</p><strong>${state.pages.length} páginas editables</strong><small>Elige una categoría y después una página.</small></div><span class="page-list-total">${state.pages.length}</span></div>${groupsHtml}`;
+  $('#page-list').innerHTML = `<label class="content-mobile-page" for="page-mobile-select"><span>Página que quieres editar</span><select id="page-mobile-select">${state.pages.map(page=>`<option value="${escapeHtml(page.page)}"${state.selectedPage===page.page?' selected':''}>${escapeHtml(pageTitle(page))}</option>`).join('')}</select></label><div class="page-list-heading"><div><p class="eyebrow">Mapa editorial</p><strong>${state.pages.length} páginas editables</strong><small>Elige una categoría y después una página.</small></div><span class="page-list-total">${state.pages.length}</span></div>${groupsHtml}`;
   $('#page-mobile-select')?.addEventListener('change',event=>{state.selectedPage=event.target.value;renderPageList();loadEditor();});
   $$('.page-list-item').forEach((button) => button.addEventListener('click', () => {
     state.selectedPage = button.dataset.pageRoute;
@@ -516,6 +520,17 @@ function activityLabel(action) {
     'signature.create': 'Firma creada',
     'signature.update': 'Firma actualizada',
     'signature.delete': 'Firma eliminada',
+    'signature.restore':'Firma restaurada',
+    'social.create':'Diseños creados',
+    'social.update':'Diseños actualizados',
+    'social.copy':'Copy actualizado',
+    'social.redesign':'Nueva propuesta de diseño',
+    'social.delete':'Diseño movido a la papelera',
+    'social.restore':'Diseño restaurado',
+    'document.create':'Documento creado',
+    'document.update':'Documento actualizado',
+    'document.delete':'Documento movido a la papelera',
+    'document.restore':'Documento restaurado',
     'content.revision.restore': 'Borrador restaurado',
     'submission.status': 'Solicitud actualizada',
     'submission.update': 'Solicitud actualizada',
@@ -781,7 +796,7 @@ function buildSignatureHtml(value) {
   const lines = [
     { key: 'name', serif: true, size: 80, x: 891.016, base: PH - 592.309, color: '#B08D57', ls: 0, ws: -0.041 },
     { key: 'role', size: 47.0786, x: 885.185, base: PH - 514.104, color: '#0C112B', ls: 0, ws: 0 },
-    { key: 'phone', size: 43, x: 992.543, base: PH - 343.561, color: '#141A3A', ls: -0.019, ws: 0.019, href: (item) => 'tel:' + item.replace(/[^\\d+]/g, '') },
+    { key: 'phone', size: 43, x: 992.543, base: PH - 343.561, color: '#141A3A', ls: -0.019, ws: 0.019, href: (item) => 'tel:' + item.replace(/[^\d+]/g, '') },
     { key: 'email', size: 43, x: 992.543, base: PH - 238.6, color: '#141A3A', ls: -0.019, ws: 0.019, href: (item) => 'mailto:' + item.trim() },
     { key: 'address1', size: 43, x: 992.543, base: PH - 143.4, color: '#141A3A', ls: -0.019, ws: 0.019 },
     { key: 'address2', size: 43, x: 992.543, base: PH - 97.3, color: '#141A3A', ls: -0.019, ws: 0.019 }
@@ -805,17 +820,23 @@ function buildSignatureHtml(value) {
   if (y < H) rows += '<tr><td height="' + (H - y) + '" style="height:' + (H - y) + 'px;line-height:' + (H - y) + 'px;font-size:1px;mso-line-height-rule:exactly;">&nbsp;</td></tr>';
   return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;border-collapse:collapse;mso-table-lspace:0;mso-table-rspace:0;"><tr><td width="' + LEFT + '" valign="top" style="width:' + LEFT + 'px;padding:0;vertical-align:top;font-size:0;line-height:0;"><img src="' + signatureEsc(logo) + '" width="' + LEFT + '" height="' + H + '" alt="Expresión Jurídica Consultores" style="display:block;width:' + LEFT + 'px;height:' + H + 'px;border:0;outline:none;"></td><td width="' + (600 - LEFT) + '" height="' + H + '" valign="top" background="' + signatureEsc(bg) + '" bgcolor="#ffffff" style="width:' + (600 - LEFT) + 'px;height:' + H + 'px;padding:0;vertical-align:top;background-color:#ffffff;background-image:url(\'' + signatureEsc(bg) + '\');background-repeat:no-repeat;background-position:0 0;background-size:' + (600 - LEFT) + 'px ' + H + 'px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="' + (600 - LEFT) + '" style="width:' + (600 - LEFT) + 'px;border-collapse:collapse;">' + rows + '</table></td></tr></table>';
 }
+let signaturePreviewObserver;
 function renderSignatureEditor(value = signatureDefaults) {
   const next = { ...signatureDefaults, ...value };
   for (const key of Object.keys(signatureDefaults)) { const element = $(`#signature-${key === 'baseUrl' ? 'base-url' : key}`); if (element) element.value = next[key] || ''; }
   const base = signatureAssetBase(next);
   const html = buildSignatureHtml(next);
-  $('#signature-preview').innerHTML = '<iframe class="signature-preview-frame" title="Vista previa de la firma" srcdoc="' + signatureEsc(html) + '"></iframe>';
+  signaturePreviewObserver?.disconnect();
+  const preview='<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;width:600px;height:220px;overflow:hidden}*{box-sizing:border-box}</style></head><body>'+html+'</body></html>';
+  $('#signature-preview').innerHTML = '<div class="signature-preview-canvas"><iframe class="signature-preview-frame" title="Vista previa de la firma" sandbox="" scrolling="no" srcdoc="' + signatureEsc(preview) + '"></iframe></div>';
+  const canvas=$('#signature-preview .signature-preview-canvas'),frame=canvas.querySelector('iframe');
+  const fit=()=>{frame.style.transform=`scale(${Math.min(1,canvas.clientWidth/600)})`;};
+  signaturePreviewObserver=new ResizeObserver(fit);signaturePreviewObserver.observe(canvas);fit();
   $('#signature-html').value = html;
 }
 
 function signatureFileStem(value) {
-  return String(value.name || 'firma-expresion-juridica').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'firma-expresion-juridica';
+  return String(value.name || 'firma-expresion-juridica').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'firma-expresion-juridica';
 }
 function downloadBlob(filename, blob) {
   const link = document.createElement('a');
@@ -856,13 +877,23 @@ async function saveSignatureCopy(event) {
 
 function renderSavedSignatures() {
   const list = $('#signatures-list');
-  list.innerHTML = state.signatures.map((signature) => `<div class="signature-saved-row"><div><strong>${signatureEsc(signature.name)}</strong><small>${signatureEsc(signature.role || 'Sin cargo')} · ${signatureEsc(signature.email)}</small></div><div class="signature-saved-actions"><button class="mini-button load-signature" data-signature-id="${signatureEsc(signature.id)}" type="button">Editar</button><button class="mini-button download-signature-html" data-signature-id="${signatureEsc(signature.id)}" type="button">HTML</button><button class="mini-button download-signature-png" data-signature-id="${signatureEsc(signature.id)}" type="button">PNG</button><button class="mini-button delete-signature" data-signature-id="${signatureEsc(signature.id)}" type="button">Eliminar</button></div></div>`).join('') || '<div class="empty-state"><span>Aún no hay firmas guardadas.</span></div>';
+  const items=state.signatures.filter(item=>Boolean(item.deletedAt)===state.signaturesTrash);
+  $('#signatures-trash-toggle').textContent=state.signaturesTrash?'Volver a firmas':'Ver papelera';$('#signatures-trash-toggle').setAttribute('aria-pressed',String(state.signaturesTrash));
+  list.innerHTML = items.map((signature) => `<div class="signature-saved-row"><div><strong>${signatureEsc(signature.name)}</strong><small>${signatureEsc(signature.role || 'Sin cargo')} · ${signatureEsc(signature.email)}</small></div><div class="signature-saved-actions">${state.signaturesTrash?`<button class="mini-button restore-signature" data-signature-id="${signatureEsc(signature.id)}" type="button">Restaurar firma</button>`:`<button class="mini-button load-signature" data-signature-id="${signatureEsc(signature.id)}" type="button">Editar</button><button class="mini-button download-signature-html" data-signature-id="${signatureEsc(signature.id)}" type="button">HTML</button><button class="mini-button download-signature-png" data-signature-id="${signatureEsc(signature.id)}" type="button">PNG</button><button class="mini-button library-trash-action delete-signature" data-signature-id="${signatureEsc(signature.id)}" type="button">Eliminar</button>`}</div></div>`).join('') || `<div class="empty-state"><span>${state.signaturesTrash?'La papelera está vacía.':'Aún no hay firmas guardadas.'}</span></div>`;
   $$('.load-signature').forEach((button) => button.addEventListener('click', () => { const signature = state.signatures.find((item) => item.id === button.dataset.signatureId); if (signature) { state.currentSignature = signature; renderSignatureEditor(signature); } }));
-  $$('.delete-signature').forEach((button) => button.addEventListener('click', async () => { try { await api(`/api/cms/signatures/${encodeURIComponent(button.dataset.signatureId)}`, { method: 'DELETE' }); notify('Firma eliminada.'); await loadSignatures(); } catch (error) { notify(`No se eliminó la firma: ${error.message}`, 'error'); } }));
+  for(const button of $$('.download-signature-html'))button.addEventListener('click',()=>downloadSignatureHtml(state.signatures.find(item=>item.id===button.dataset.signatureId)));
+  for(const button of $$('.download-signature-png'))button.addEventListener('click',()=>downloadSignaturePng(state.signatures.find(item=>item.id===button.dataset.signatureId)));
+  for(const button of $$('.delete-signature,.restore-signature'))button.addEventListener('click',async()=>{
+    const record=state.signatures.find(item=>item.id===button.dataset.signatureId),restore=button.classList.contains('restore-signature');
+    if(!record||!restore&&!await confirmLibraryRemoval(record.name))return;
+    button.disabled=true;
+    try{await api(`/api/cms/signatures/${encodeURIComponent(record.id)}${restore?'/restore':''}`,{method:restore?'POST':'DELETE',body:{version:record.updatedAt}});if(state.currentSignature?.id===record.id){state.currentSignature=null;renderSignatureEditor(signatureDefaults);}notify(restore?'Firma restaurada.':'Firma movida a la papelera.');await loadSignatures();}catch{button.disabled=false;notify('No se pudo actualizar la firma. Vuelve a intentarlo.','error');}
+  });
+  for(const button of $$('.delete-signature,.restore-signature'))button.disabled=!['owner','editor'].includes(state.user?.role);
 }
 
 async function loadSignatures() {
-  try { const response = await api('/api/cms/signatures'); state.signatures = response.signatures || []; renderSavedSignatures(); if (!state.currentSignature) renderSignatureEditor(signatureDefaults); } catch { notify('No se pudieron cargar las firmas.', 'error'); }
+  try { const response = await api('/api/cms/signatures?includeDeleted=1'); state.signatures = response.signatures || []; renderSavedSignatures(); if (!state.currentSignature) renderSignatureEditor(signatureDefaults); } catch { notify('No se pudieron cargar las firmas.', 'error'); }
 }
 
 async function saveSignature(event) {
@@ -881,6 +912,18 @@ async function saveSignature(event) {
 const presentationFiles = { documents: [], supportImages: [] };
 let presentationBusy = false;
 let presentationAiConfigured = false;
+let presentationPolling=null;
+
+async function waitPresentationJob(job) {
+  if(presentationPolling)return presentationPolling;
+  const form=$('#presentation-form'),controls=$$('input,select,textarea,button',form),disabled=controls.map(control=>control.disabled);
+  presentationBusy=true;form.setAttribute('aria-busy','true');controls.forEach(control=>{control.disabled=true;});
+  if($('#presentation-progress').hidden||$('#presentation-progress').dataset.state!=='running')presentationProgress.start({includeImages:false,created:job.created});
+  presentationPolling=(async()=>{
+    for(;;){presentationProgress.update(job);if(job.state==='complete'){presentationProgress.finish('Presentación guardada. Los archivos están listos.');return job.result;}if(job.state==='failed')throw new Error(job.error||'PRESENTATION_GENERATION_FAILED');await new Promise(resolve=>setTimeout(resolve,1800));job=(await api(`/api/cms/presentations/jobs/${encodeURIComponent(job.id)}`)).job;}
+  })();
+  try{return await presentationPolling;}finally{presentationPolling=null;presentationBusy=false;form.removeAttribute('aria-busy');controls.forEach((control,index)=>{control.disabled=disabled[index];});$('#generate-presentation').disabled=!['owner','editor'].includes(state.user?.role);$('#generate-presentation').textContent=presentationAiConfigured?'Generar presentación':'Generar archivo de prueba';syncPresentationVisuals();}
+}
 
 function presentationError(message = '') {
   const element = $('#presentation-error');
@@ -972,6 +1015,7 @@ async function loadPresentations() {
     button.disabled = presentationBusy || !['owner', 'editor'].includes(state.user?.role);
     if (!presentationBusy) button.textContent = presentationAiConfigured ? 'Generar presentación' : 'Generar archivo de prueba';
     renderPresentations();
+    if(response.activeJob&&!presentationPolling&&!presentationBusy){waitPresentationJob(response.activeJob).then(async record=>{renderPresentationResult(record);await loadPresentations();notify('Presentación lista en el historial.');}).catch(error=>{presentationProgress.fail();presentationError(error.message?.startsWith('OPENAI_')?'OpenAI no pudo completar la generación. Revisa los créditos y el acceso a los modelos.':'No se pudo completar la presentación. Puedes volver a intentarlo.');});}
   } catch (error) {
     if (error.code !== 'AUTH_REQUIRED') presentationError('No se pudieron cargar las presentaciones. Vuelve a pulsar Actualizar.');
   }
@@ -990,7 +1034,7 @@ async function submitPresentation(event) {
     topic, sourceText: $('#presentation-source').value, slideCount: $('#presentation-slide-count').value,
     language: $('#presentation-language').value, style: $('#presentation-style').value, branding: $('#presentation-branding').value,
     includeVisuals: $('#presentation-include-visuals').checked, includeImage: $('#presentation-include-image').checked,
-    webSearch: $('#presentation-web-search').checked, formats: JSON.stringify(formats)
+    webSearch: $('#presentation-web-search').checked, formats: JSON.stringify(formats), async:true
   };
   Object.entries(values).forEach(([key, value]) => body.append(key, String(value)));
   presentationFiles.documents.forEach(file => body.append('documents', file));
@@ -1003,10 +1047,13 @@ async function submitPresentation(event) {
   const button = $('#generate-presentation');
   const status = $('#presentation-status');
   button.textContent = 'Generando presentación…';
-  status.textContent = 'Preparando contenido y archivos. Las imágenes pueden tardar unos minutos.';
+  status.textContent = '';
+  presentationProgress.start({includeImages:values.includeVisuals&&values.includeImage});$('#presentation-progress').scrollIntoView({behavior:'smooth',block:'center'});
   try {
     const response = await api('/api/cms/presentations/generate', { method: 'POST', body });
-    renderPresentationResult(response.presentation);
+    const presentation=response.job?await waitPresentationJob(response.job):response.presentation;
+    renderPresentationResult(presentation);
+    presentationProgress.finish('Presentación guardada. Los archivos están listos.');
     await loadPresentations();
     status.textContent = 'Presentación guardada. Los archivos están listos para descargar.';
     $('#presentation-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1015,6 +1062,7 @@ async function submitPresentation(event) {
     status.textContent = '';
     const message = error.detail?.startsWith('OPENAI_') ? 'OpenAI no pudo completar la generación. Revisa los créditos y el acceso a los modelos en tu cuenta e inténtalo de nuevo.' : error.detail || 'No se pudo generar la presentación. Inténtalo de nuevo.';
     presentationError(message);
+    presentationProgress.fail(message);
   } finally {
     presentationBusy = false;
     $('#presentation-form').removeAttribute('aria-busy');
@@ -1118,7 +1166,8 @@ $('#logout-button').addEventListener('click', async () => { try { await api('/ap
   $('#signature-download-png').addEventListener('click', () => downloadSignaturePng(signatureValues()));
   ['name', 'role', 'phone', 'email', 'address1', 'address2', 'base-url'].forEach((key) => $(`#signature-${key}`).addEventListener('input', () => renderSignatureEditor(signatureValues())));
   $('#signature-reset').addEventListener('click', () => { state.currentSignature = null; renderSignatureEditor(signatureDefaults); });
-  $('#signature-copy-code').addEventListener('click', async () => { await navigator.clipboard?.writeText($('#signature-html').value); notify('Código de firma copiado.'); });
+  $('#signatures-trash-toggle').addEventListener('click',()=>{state.signaturesTrash=!state.signaturesTrash;renderSavedSignatures();});
+  $('#signature-copy-code').addEventListener('click', async () => { try{if(!navigator.clipboard?.writeText)throw new Error('CLIPBOARD_UNAVAILABLE');await navigator.clipboard.writeText($('#signature-html').value);notify('Código HTML copiado.');}catch{$('#signature-html').focus();$('#signature-html').select();notify('El HTML está seleccionado. Puedes copiarlo con Ctrl/Cmd+C.');} });
   $('#signature-copy-rich').addEventListener('click', async () => { const html = $('#signature-html').value; try { if (navigator.clipboard?.write && window.ClipboardItem) await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([html], { type: 'text/plain' }) })]); else await navigator.clipboard?.writeText(html); notify('Firma copiada.'); } catch { await navigator.clipboard?.writeText(html); notify('Código de firma copiado.'); } });
   $('#presentation-form').addEventListener('submit', submitPresentation);
   $('#presentation-documents').addEventListener('change', event => addPresentationFiles(event, 'documents'));

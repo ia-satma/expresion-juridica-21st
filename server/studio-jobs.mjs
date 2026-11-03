@@ -8,7 +8,7 @@ export function createStudioJobs(namespace, serialize = value => value) {
   const jobs = new Map();
   const owner = req => String(req.cmsUser.id || req.cmsUser.email);
   const ownerId = req => crypto.createHash('sha256').update(`${namespace}:${owner(req)}`).digest('hex');
-  const payload = job => ({ id: job.id, state: job.state, message: job.message, completed: job.completed, total: job.total, result: job.result || null, error: job.error ? safeErrorCode(job.error, 'DOCUMENT_GENERATION_FAILED') : null });
+  const payload = job => ({ id: job.id, state: job.state, stage:job.stage, created:job.created, message: job.message, completed: job.completed, total: job.total, result: job.result || null, error: job.error ? safeErrorCode(job.error, 'DOCUMENT_GENERATION_FAILED') : null });
   function persist(job, force = false) {
     if (!force && Date.now() - (job.persistedAt || 0) < 1500) return job.writeChain || Promise.resolve();
     job.persistedAt = Date.now(); job.updatedAt = Date.now();
@@ -34,13 +34,13 @@ export function createStudioJobs(namespace, serialize = value => value) {
     if ([...jobs.values()].some(job => job.owner === owner(req) && ['queued', 'running'].includes(job.state)) || await active(req)) {
       throw Object.assign(new Error('Ya hay una generación en curso. Espera a que termine.'), { code: 'STUDIO_JOB_ACTIVE', status: 409 });
     }
-    const job = { id: crypto.randomUUID(), namespace, owner: owner(req), state: 'queued', message: 'Preparando el documento', completed: 0, total: 1, created: Date.now() };
+    const job = { id: crypto.randomUUID(), namespace, owner: owner(req), state: 'queued', stage:'prepare', message: 'Revisando los insumos', completed: 0, total: 1, created: Date.now() };
     jobs.set(job.id, job);
     await Promise.all([persist(job, true), writeStudioState('owners', ownerId(req), { jobId: job.id })]);
-    const progress = (message, completed = 0, total = 1) => { Object.assign(job, { state: 'running', message, completed, total }); persist(job).catch(error => console.error('[studio-job-state]', error.message)); };
+    const progress = (message, completed = 0, total = 1, stage='content') => { Object.assign(job, { state: 'running', stage, message, completed, total }); persist(job).catch(error => console.error('[studio-job-state]', error.message)); };
     const heartbeat = setInterval(() => persist(job, true).catch(error => console.error('[studio-heartbeat]', error.message)), 20000); heartbeat.unref();
     Promise.resolve().then(() => work(progress)).then(async record => {
-      Object.assign(job, { state: 'complete', result: serialize(record), message: 'Archivos guardados y listos', completed: 1, total: 1, finished: Date.now() });
+      Object.assign(job, { state: 'complete', stage:'save', result: serialize(record), message: 'Archivos guardados y listos', completed: 1, total: 1, finished: Date.now() });
       await persist(job, true);
     }).catch(async error => {
       safeLog('error', 'studio.generation.failed', error);

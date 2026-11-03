@@ -24,8 +24,8 @@ const mock = http.createServer(async (req, res) => {
   res.setHeader('content-type', 'application/json');
   if (req.url === '/images/generations') return res.end(JSON.stringify({ data: [{ b64_json: image.toString('base64') }] }));
   if (req.url === '/responses') {
-    const input = JSON.parse(body.input);
-    const data = body.text.format.name === 'social_copy' ? copies('Copy actualizado.') : { title: 'Una estrategia jurídica clara', posts: Array.from({ length: input.pieces }, (_, index) => makePost(index)), copies: copies('Copy inicial.') };
+    const input = Array.isArray(body.input)?JSON.parse(body.input[0].content[0].text):JSON.parse(body.input);
+    const data = body.text.format.name==='social_art_direction'?{notes:'Portada con más aire y fotografías con jerarquía lateral.',pieces:input.posts.map((post,index)=>({layout:index%2?'photo-side':'photo-editorial',design:{palette:'ivory',spacing:'generous',headlineScale:'expressive'}}))}:body.text.format.name === 'social_copy' ? copies('Copy actualizado.') : { title: 'Una estrategia jurídica clara', posts: Array.from({ length: input.pieces }, (_, index) => makePost(index)), copies: copies('Copy inicial.') };
     return res.end(JSON.stringify({ model: 'gpt-6.1-sol', status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(data), annotations: body.tools ? [{ type: 'url_citation', title: 'Fuente de prueba', url: 'https://example.com/source' }] : [] }] }] }));
   }
   res.statusCode = 404; res.end('{}');
@@ -35,6 +35,7 @@ process.env.CMS_DATA_SCOPE = `social-check-${Date.now()}`; process.env.OPENAI_AP
 for (const key of ['REPL_ID', 'REPLIT_DEPLOYMENT_URL', 'REPLIT_DEV_DOMAIN']) delete process.env[key];
 const { registerSocialRoutes } = await import('../server/social-routes.mjs');
 const { renderSocialSet, readSocialFile } = await import('../server/social-generator.mjs');
+const { SOCIAL_PALETTES }=await import('../server/social-design.mjs');
 const store = { socialPosts: [] };
 const app = express(); app.use(express.json({ limit: '5mb' }));
 const requireAuth = (req, res, next) => {
@@ -68,7 +69,7 @@ try {
   assert.equal((await fetch(base + '/api/cms/posts')).status, 401);
   assert.equal((await fetch(base + '/api/cms/posts/generate', { method: 'POST', headers: { cookie: headers.cookie } })).status, 403);
   const form = new FormData();
-  Object.entries({ topic: 'Expresión Jurídica: diagnóstico, estrategia y seguimiento.', mode: 'carousel', count: 3, size: 'portrait', includeImages: true, webSearch: true }).forEach(([key, value]) => form.append(key, String(value)));
+  Object.entries({ topic: 'Expresión Jurídica: diagnóstico, estrategia y seguimiento.', mode: 'carousel', count: 3, size: 'portrait', palette:'mixed', includeImages: true, webSearch: true }).forEach(([key, value]) => form.append(key, String(value)));
   form.append('documents', new Blob(['Material público de prueba. Primero escuchar, luego ordenar prioridades y dar seguimiento.']), 'insumo.txt');
   form.append('supportImages', new Blob([image], { type: 'image/png' }), 'apoyo.png');
   const started = await json('/api/cms/posts/generate', { method: 'POST', body: form });
@@ -78,6 +79,7 @@ try {
   assert.equal(result.count, 3); assert.equal(result.files.png.length, 3); assert.equal(result.files.html.length, 3);
   assert.equal(result.generatedImageCount, 2); assert.equal(result.brandProfile, 'ej-manual-2026'); assert.equal(result.model, 'gpt-6.1-sol'); assert.equal(result.imageModel, 'gpt-image-2');
   assert.deepEqual(Object.keys(result.copies), networks); assert.equal(result.sources.length, 1);
+  assert.equal(result.requestedPalette,'mixed');assert(new Set(result.posts.map(post=>post.design.palette)).size>1);
   assert.equal(requests.filter(request => request.url === '/images/generations').length, 2);
   assert.match(requests.find(request => request.url === '/responses').body.instructions, /Mexico|Mexican|México/);
   assert(requests.filter(request => request.url === '/images/generations').every(request => /Documentary|documentary/.test(request.body.prompt) && /Mexico|México/.test(request.body.prompt)));
@@ -90,6 +92,7 @@ try {
     assert.equal(html.includes('Imagen generada con IA'), index > 0);
   }
   const png = await (await fetch(base + result.files.png[0], { headers })).arrayBuffer();
+  const individual=await fetch(base+result.files.png[1]+'&download=1',{headers});assert.match(individual.headers.get('content-type'),/image\/png/);assert.match(individual.headers.get('content-disposition'),/^attachment;/);assert.equal(individual.status,200);
   const metadata = await sharp(Buffer.from(png)).metadata(); assert.equal(metadata.width, 1080); assert.equal(metadata.height, 1350);
   const pack = await JSZip.loadAsync(await (await fetch(base + result.files.pack, { headers })).arrayBuffer());
   assert.equal(Object.keys(pack.files).filter(name => name.endsWith('.png')).length, 3); assert.equal(Object.keys(pack.files).filter(name => name.endsWith('.html')).length, 3); assert(pack.file('copy-por-red.txt'));
@@ -111,14 +114,29 @@ try {
     assert.equal((await (await fetch(origin + `/api/cms/posts/jobs/${renewed.data.job.id}`, { headers })).json()).job.state, 'complete');
     assert.equal((await fetch(origin + recaptioned.files.html[0], { headers })).status, 200);
   } finally { replica.close(); }
+  const redesignedRequest=await json(`/api/cms/posts/${result.id}/redesign`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({version:recaptioned.updatedAt,palette:'ivory',instructions:'Más espacio y fotografías laterales.'})});
+  assert.equal(redesignedRequest.response.status,202);const redesigned=await finish(redesignedRequest.data.job.id);
+  assert.notEqual(redesigned.id,result.id);assert.equal(redesigned.referenceId,result.id);assert.equal(redesigned.model,'gpt-6.1-sol');assert(redesigned.posts.every(post=>post.design.palette==='ivory'));
+  assert.deepEqual(redesigned.posts.map(({layout,design,hasArtwork,...post})=>post),recaptioned.posts.map(({layout,design,hasArtwork,...post})=>post));assert.deepEqual(redesigned.copies,recaptioned.copies);
+  const designCall=requests.find(call=>call.body?.text?.format?.name==='social_art_direction');assert(designCall.body.input[0].content.some(item=>item.type==='input_image'));assert.equal(designCall.body.model,'gpt-6.1-sol');assert.match(designCall.body.instructions,/graphic designer|art director/);
+  assert.equal((await json(`/api/cms/posts/${redesigned.id}`,{method:'DELETE',headers:{'x-cms-csrf':''}})).response.status,403);
+  assert.equal((await json(`/api/cms/posts/${redesigned.id}`,{method:'DELETE',headers:{'x-qa-role':'viewer'}})).response.status,403);
+  const removed=await json(`/api/cms/posts/${redesigned.id}`,{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({version:redesigned.updatedAt})});assert.equal(removed.response.status,200);assert.equal(removed.data.recoverable,true);
+  assert(!(await json('/api/cms/posts')).data.posts.some(item=>item.id===redesigned.id));assert((await json('/api/cms/posts?includeDeleted=1')).data.posts.some(item=>item.id===redesigned.id&&item.deletedAt));assert.equal((await fetch(base+redesigned.files.png[0],{headers})).status,404);
+  const restored=await json(`/api/cms/posts/${redesigned.id}/restore`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({version:removed.data.record.updatedAt})});assert.equal(restored.response.status,200);assert.equal((await fetch(base+redesigned.files.png[0],{headers})).status,200);
+  for(const [palette,colors] of Object.entries(SOCIAL_PALETTES)){
+    const themed=await renderSocialSet({...store.socialPosts[0],count:1,posts:[{...makePost(0),layout:'typographic',design:{palette},artwork:null}]});
+    const bytes=await readSocialFile(themed.files.png[0]),pixel=await sharp(bytes).extract({left:0,top:0,width:1,height:1}).removeAlpha().raw().toBuffer();assert.equal('#'+pixel.toString('hex'),colors.background.toLowerCase());
+    await fs.writeFile(path.join(output,`palette-${palette}.png`),bytes);
+  }
   const variants = await renderSocialSet({ ...store.socialPosts[0], id: 'qa-variants', count: 8, posts: layouts.map((layout, index) => ({ ...makePost(index), layout, artwork: null })) });
   for (const [index, file] of variants.files.png.entries()) await fs.writeFile(path.join(output, `variant-${layouts[index]}.png`), await readSocialFile(file));
   for (const [size, dimensions] of Object.entries({ square: [1080, 1080], story: [1080, 1920], landscape: [1080, 566] })) {
     const rendered = await renderSocialSet({ ...store.socialPosts[0], id: `qa-${size}`, count: 1, size, posts: [{ ...makePost(0), headline: 'Una idea clara', body: 'Escuchar. Definir prioridades. Dar seguimiento.', bullets: [], layout: 'typographic', artwork: null }] });
     const image = await readSocialFile(rendered.files.png[0]); const info = await sharp(image).metadata(); assert.deepEqual([info.width, info.height], dimensions); await fs.writeFile(path.join(output, `size-${size}.png`), image);
   }
-  assert(JSON.stringify(store).length < 60000, 'Store metadata must not contain embedded binary data');
-  console.log(JSON.stringify({ passed: true, asyncJobs: true, authAndCsrf: true, uploadFirst: true, pngAndEditableHtml: true, persistedEditsWithoutAi: true, networkCopies: 6, layouts: 8, sizes: 4, output }));
+  assert(JSON.stringify(store).length < 90000, 'Store metadata must not contain embedded binary data');
+  console.log(JSON.stringify({ passed: true, asyncJobs: true, authAndCsrf: true, uploadFirst: true, pngAndEditableHtml: true, individualPngDownload:true, persistedEditsWithoutAi: true, visualRedesignWithSol:true, originalPreserved:true,palettes:4,recoverableDelete:true, networkCopies: 6, layouts: 10, sizes: 4, output }));
   if (process.env.EJ_SOCIAL_PREVIEW === '1') console.log(`PREVIEW ${base}/admin/#posts`);
 } finally {
   if (process.env.EJ_SOCIAL_PREVIEW !== '1') { server.close(); mock.close(); }

@@ -225,9 +225,10 @@ async function saveFile(id, name, buffer) {
   if (appStorageEnabled) { const result = await uploadFile(relative, local); if (!result.ok) throw new Error(result.error || 'APP_STORAGE_UPLOAD_FAILED'); }
   return { name, relative, storage: appStorageEnabled ? 'replit-app-storage' : 'local', localPath: path.relative(process.cwd(), local) };
 }
-export async function generatePresentation({ topic = '', sourceText = '', slideCount = 8, language = 'es', style = 'corporate', branding = 'firm', includeVisuals = true, includeImage = false, webSearch = false, supportImages = [], formats = ['pptx', 'pdf', 'png'], documentNames = [] }) {
+export async function generatePresentation({ topic = '', sourceText = '', slideCount = 8, language = 'es', style = 'corporate', branding = 'firm', includeVisuals = true, includeImage = false, webSearch = false, supportImages = [], formats = ['pptx', 'pdf', 'png'], documentNames = [] },progress=()=>{}) {
   const count = Math.max(3, Math.min(20, Number(slideCount) || 8));
   const selectedFormats = [...new Set(formats)].filter(x => ['pptx', 'pdf', 'png'].includes(x)); if (!selectedFormats.length) throw new Error('PRESENTATION_FORMAT_REQUIRED');
+  progress('Sol está preparando el contenido y la secuencia de diapositivas',0,1,'content');
   const result = await outline({ topic: clean(topic, 10000), source: clean(sourceText, 120000), count, language, includeVisuals, webSearch });
   const data = result.data; const metrics = await prepareFonts(); const assets = await presentationBrandAssets();
   const artworkBySlide = new Map(); const generated = [];
@@ -236,18 +237,22 @@ export async function generatePresentation({ topic = '', sourceText = '', slideC
   if (includeVisuals && includeImage && result.aiUsed) {
     const pending = candidates.filter(i => !artworkBySlide.has(i)).slice(0, 4);
     for (let start = 0; start < pending.length; start += 2) {
+      progress(`Generando fotografías documentales · ${start+1} de ${pending.length}`,start,pending.length,'images');
       const batch = await Promise.all(pending.slice(start, start + 2).map(async i => ({ index: i, ...await generateSlideImage(data, data.slides[i]) })));
       for (const image of batch) { artworkBySlide.set(image.index, image.buffer); generated.push(image); }
     }
   }
   const scenes = data.slides.map((slide, i) => sceneFor(slide, i, count, { assets, metrics, artwork: artworkBySlide.get(i), isAiArtwork: generated.some(image => image.index === i), style, branding }));
-  const pngs = []; for (const scene of scenes) pngs.push(await sharp(Buffer.from(svgFor(scene, metrics))).png().toBuffer());
+  const pngs = []; for (const [index,scene] of scenes.entries()){progress(`Componiendo diapositiva ${index+1} de ${scenes.length}`,index,scenes.length,'layout');pngs.push(await sharp(Buffer.from(svgFor(scene, metrics))).png().toBuffer());}
   const id = crypto.randomUUID(); const name = slug(data.title); const files = { pptx: null, pdf: null, images: [], artwork: null, imagesZip: null };
-  if (selectedFormats.includes('pptx')) files.pptx = await saveFile(id, `${name}.pptx`, await pptx(scenes, data.title, language, result.sources));
-  if (selectedFormats.includes('pdf')) files.pdf = await saveFile(id, `${name}.pdf`, await pdf(pngs, data.title));
-  for (let i = 0; i < pngs.length; i++) files.images.push(await saveFile(id, `${name}-${String(i + 1).padStart(2, '0')}.png`, pngs[i]));
-  if (selectedFormats.includes('png')) { const zip = new JSZip(); pngs.forEach((png, i) => zip.file(`${name}-${String(i + 1).padStart(2, '0')}.png`, png)); files.imagesZip = await saveFile(id, `${name}-diapositivas.zip`, await zip.generateAsync({ type: 'nodebuffer' })); }
-  if (generated.length) files.artwork = await saveFile(id, `${name}-imagen-ia.png`, generated[0].buffer);
+  const exportTotal=pngs.length+selectedFormats.length+(generated.length?1:0);let exported=0;
+  const exporting=message=>progress(message,exported,exportTotal,'export');
+  if (selectedFormats.includes('pptx')){exporting('Preparando el PowerPoint totalmente editable');files.pptx = await saveFile(id, `${name}.pptx`, await pptx(scenes, data.title, language, result.sources));exported++;}
+  if (selectedFormats.includes('pdf')){exporting('Preparando el PDF');files.pdf = await saveFile(id, `${name}.pdf`, await pdf(pngs, data.title));exported++;}
+  for (let i = 0; i < pngs.length; i++){exporting(`Guardando la imagen de la diapositiva ${i+1}`);files.images.push(await saveFile(id, `${name}-${String(i + 1).padStart(2, '0')}.png`, pngs[i]));exported++;}
+  if (selectedFormats.includes('png')) {exporting('Preparando la descarga de imágenes'); const zip = new JSZip(); pngs.forEach((png, i) => zip.file(`${name}-${String(i + 1).padStart(2, '0')}.png`, png)); files.imagesZip = await saveFile(id, `${name}-diapositivas.zip`, await zip.generateAsync({ type: 'nodebuffer' }));exported++; }
+  if (generated.length){exporting('Guardando las fotografías generadas');files.artwork = await saveFile(id, `${name}-imagen-ia.png`, generated[0].buffer);exported++;}
+  progress('Archivos preparados',exported,exportTotal,'export');
   return { id, agentSkill: EDITORIAL_SKILL_ID, title: data.title, subtitle: data.subtitle, topic: clean(topic), sourceLength: clean(sourceText, 120000).length, language, style, branding, brandProfile: B.id, formats: selectedFormats, documentNames, uploadedImageCount: supportImages.length, includeVisuals, webSearch, sources: result.sources, slideCount: count, aiUsed: result.aiUsed, model: result.model, imageUsed: Boolean(generated.length), imageModel: generated.length ? presentationModels().imageModel : null, generatedImageCount: generated.length, warning: result.warning, createdAt: new Date().toISOString(), outline: data, files };
 }
 export function filePathForPresentation(file) { return file?.localPath ? path.join(process.cwd(), file.localPath) : null; }

@@ -5,16 +5,17 @@ import { listStudioRecords, readStudioState, writeStudioState } from './studio-s
 import { generateDocument, renderDocument, currentDocumentExport, normalizeDocument, LETTERHEAD_DIR } from './document-generator.mjs';
 import { presentationModels } from './presentation-generator.mjs';
 import { publicFailure, safeLog } from './security-logging.mjs';
+import { registerStudioTrashRoutes } from './studio-trash.mjs';
 
 export function registerDocumentRoutes(app, { store, writeStore, requireAuth, requireEditor, requireCsrf, audit }) {
   store.documents = Array.isArray(store.documents) ? store.documents : [];
-  const publicRecord = item => ({ id: item.id, title: item.title, document: item.document, pageCount: item.pageCount, aiUsed: item.aiUsed, model: item.model, brandProfile: item.brandProfile, createdAt: item.createdAt, updatedAt: item.updatedAt, files: { docx: `/api/cms/documents/${item.id}/file/docx`, pdf: `/api/cms/documents/${item.id}/file/pdf` } });
+  const publicRecord = item => ({ id: item.id, title: item.title, document: item.document, pageCount: item.pageCount, aiUsed: item.aiUsed, model: item.model, brandProfile: item.brandProfile, createdAt: item.createdAt, updatedAt: item.updatedAt, deletedAt:item.deletedAt||null, files: { docx: `/api/cms/documents/${item.id}/file/docx`, pdf: `/api/cms/documents/${item.id}/file/pdf` } });
   const jobs = createStudioJobs('documents', publicRecord);
   const get = async id => await readStudioState('documents', id) || store.documents.find(item => item.id === id);
-  async function save(item) { await writeStudioState('documents', item.id, item); store.documents = [item, ...store.documents.filter(record => record.id !== item.id)]; writeStore(); }
+  async function save(item) { await writeStudioState('documents', item.id, item); store.documents = [item, ...store.documents.filter(record => record.id !== item.id)]; }
   function fail(res, error) { safeLog('error', 'document.request.failed', error); res.status(error.status || 500).json(publicFailure(error, 'DOCUMENT_GENERATION_FAILED')); }
   app.get('/api/cms/documents', requireAuth, async (req, res) => {
-    try { store.documents = await listStudioRecords('documents', store.documents); res.set('Cache-Control', 'private, no-store').json({ documents: store.documents.map(publicRecord), generator: presentationModels(), activeJob: await jobs.active(req) }); }
+    try { store.documents = await listStudioRecords('documents', store.documents); res.set('Cache-Control', 'private, no-store').json({ documents: store.documents.filter(item=>req.query.includeDeleted==='1'||!item.deletedAt).map(publicRecord), generator: presentationModels(), activeJob: await jobs.active(req) }); }
     catch (error) { fail(res, error); }
   });
   app.get('/api/cms/documents/brand/:asset', requireAuth, async (req, res, next) => {
@@ -31,27 +32,28 @@ export function registerDocumentRoutes(app, { store, writeStore, requireAuth, re
       if (typeof text !== 'string' || !text.trim() || text.length > 200000) return res.status(400).json({ error: 'DOCUMENT_INPUT_INVALID', detail: 'Pega el texto del documento. Se admiten hasta 200 000 caracteres.' });
       const job = await jobs.enqueue(req, async progress => {
         const result = await generateDocument({ text, title: String(title).slice(0, 180), instructions: String(instructions).slice(0, 5000), mode: mode === 'organize' ? 'organize' : 'preserve' }, progress);
-        const record = { ...result, createdBy: req.cmsUser.email }; await save(record); audit('document.create', req.cmsUser, { documentId: record.id, aiUsed: record.aiUsed, model: record.model }); return record;
+        const record = { ...result, createdBy: req.cmsUser.email };progress('Guardando el documento y sus archivos',0,1,'save'); await save(record); audit('document.create', req.cmsUser, { documentId: record.id, aiUsed: record.aiUsed, model: record.model });await writeStore(); return record;
       });
       res.status(202).json({ job });
     } catch (error) { fail(res, error); }
   });
   app.patch('/api/cms/documents/:id', requireAuth, requireEditor, requireCsrf, async (req, res) => {
     try {
-      const original = await get(req.params.id); if (!original) return res.status(404).json({ error: 'DOCUMENT_NOT_FOUND' });
+      const original = await get(req.params.id); if (!original||original.deletedAt) return res.status(404).json({ error: 'DOCUMENT_NOT_FOUND' });
       if (req.body.version !== original.updatedAt) return res.status(409).json({ error: 'DOCUMENT_VERSION_CHANGED', detail: 'El documento cambió en otra edición. Abre la versión más reciente del historial.' });
       const document = normalizeDocument(req.body.document);
       const job = await jobs.enqueue(req, async progress => {
         const record = await renderDocument({ ...original, title: String(req.body.title || original.title).slice(0, 180), document }, progress);
         const latest = await get(original.id); if (latest.updatedAt !== original.updatedAt) throw new Error('DOCUMENT_VERSION_CHANGED');
-        await save(record); audit('document.update', req.cmsUser, { documentId: record.id }); return record;
+        progress('Guardando las ediciones y los archivos',0,1,'save');await save(record); audit('document.update', req.cmsUser, { documentId: record.id });await writeStore(); return record;
       }); res.status(202).json({ job });
     } catch (error) { fail(res, error); }
   });
+  registerStudioTrashRoutes(app,{base:'/api/cms/documents',getRecord:get,saveRecord:save,serialize:publicRecord,requireAuth,requireEditor,requireCsrf,audit,writeStore,action:'document'});
   app.get('/api/cms/documents/:id/file/:kind', requireAuth, async (req, res, next) => {
     try {
       const item = await get(req.params.id), kind = req.params.kind;
-      if (!item || !['docx', 'pdf'].includes(kind)) return res.status(404).json({ error: 'DOCUMENT_FILE_NOT_FOUND' });
+      if (!item || item.deletedAt || !['docx', 'pdf'].includes(kind)) return res.status(404).json({ error: 'DOCUMENT_FILE_NOT_FOUND' });
       res.set('Cache-Control', 'private, no-store').set('X-Content-Type-Options', 'nosniff');
       res.type(kind === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
       res.set('Content-Disposition', `${kind === 'pdf' && req.query.preview === '1' ? 'inline' : 'attachment'}; filename="${item.files[kind].name.replace(/[^a-zA-Z0-9._-]/g, '-')}"`);

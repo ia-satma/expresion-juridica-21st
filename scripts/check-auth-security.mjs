@@ -71,11 +71,20 @@ try {
   const sent=await request('/api/public/contact',{method:'POST',body:JSON.stringify(contact)});assert.equal(sent.status,201);const receipt=await sent.json();
   const submissions=await (await request('/api/cms/submissions')).json();assert(submissions.submissions.some(item=>item.id===receipt.id&&item.message===contact.mensaje));
   const storedContact=JSON.parse(await fs.readFile(path.join(temporary,'data','isolated-security-check','studio-state','submissions',receipt.id+'.json'),'utf8'));assert.equal(storedContact.message,contact.mensaje,'The CMS copy must also exist in persistent scoped storage');
+  const signatureResponse=await request('/api/cms/signatures',{method:'POST',body:JSON.stringify({name:'Firma sintética de prueba',email:'signature-fixture@invalid.test',role:'Prueba'})});assert.equal(signatureResponse.status,201);const signature=(await signatureResponse.json()).signature;
+  const removal=await request(`/api/cms/signatures/${signature.id}`,{method:'DELETE',body:JSON.stringify({version:signature.updatedAt})});assert.equal(removal.status,200);const trashed=(await removal.json()).record;
+  assert(!(await (await request('/api/cms/signatures')).json()).signatures.some(item=>item.id===signature.id));assert((await (await request('/api/cms/signatures?includeDeleted=1')).json()).signatures.some(item=>item.id===signature.id&&item.deletedAt));
+  assert.equal((await request(`/api/cms/signatures/${signature.id}/restore`,{method:'POST',body:JSON.stringify({version:trashed.updatedAt})})).status,200);
+  assert((await (await request('/api/cms/signatures')).json()).signatures.some(item=>item.id===signature.id));
+  const startedPpt=await request('/api/cms/presentations/generate',{method:'POST',body:JSON.stringify({topic:'Presentación sintética de prueba',slideCount:3,formats:['png'],includeVisuals:false,async:true})});assert.equal(startedPpt.status,202);let pptJob=(await startedPpt.json()).job;assert.equal(pptJob.stage,'prepare');
+  const pptStart=Date.now();while(!['complete','failed'].includes(pptJob.state)){assert(Date.now()-pptStart<45000);await new Promise(resolve=>setTimeout(resolve,30));pptJob=(await (await request(`/api/cms/presentations/jobs/${pptJob.id}`)).json()).job;}
+  assert.equal(pptJob.state,'complete');assert.equal(pptJob.result.aiUsed,false);assert.equal(pptJob.result.slideCount,3);assert.equal((await request(pptJob.result.files.images[0])).status,200);
+  assert((await (await request('/api/cms/presentations')).json()).presentations.some(item=>item.id===pptJob.result.id));
   const secondRegistration = await fetch(base + '/api/auth/sign-up/email', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ email: 'second-fixture@invalid.test', password, name: 'Unused fixture' }) });
   assert.equal(secondRegistration.status, 403);
   await new Promise(resolve => setTimeout(resolve, 50));
   assert(!logs.includes(email) && !logs.includes(password) && !logs.includes(changedPassword) && !logs.includes(authSecret)&&!logs.includes(contact.correo)&&!logs.includes(contact.nombre)&&!logs.includes(contact.mensaje), 'Runtime logs must not contain fixture credentials, identity or form content');
-  console.log(JSON.stringify({ passed: true, isolatedAuthDatabase: true, anonymousIdentityHidden: true, privateRoutes: 10, registrationClosesAfterOwner: true, secureHttpOnlySession: true, secureCsrfCookie: true, firstLoginChangeRequired, authenticatedSettingsSave: true, authenticatedContentSave:true,confirmedContentImmediatelyPublic:true,contactCopyInPrivateCms:true,contactCopyPersisted:true,csrfEnforced: true, privateRuntimeLogs: true }));
+  console.log(JSON.stringify({ passed: true, isolatedAuthDatabase: true, anonymousIdentityHidden: true, privateRoutes: 10, registrationClosesAfterOwner: true, secureHttpOnlySession: true, secureCsrfCookie: true, firstLoginChangeRequired, authenticatedSettingsSave: true, authenticatedContentSave:true,confirmedContentImmediatelyPublic:true,contactCopyInPrivateCms:true,contactCopyPersisted:true,recoverableSignatureDelete:true,asynchronousPresentations:true,csrfEnforced: true, privateRuntimeLogs: true }));
 } finally {
   child.kill('SIGTERM');
   if (child.exitCode === null) await new Promise(resolve => child.once('exit', resolve));

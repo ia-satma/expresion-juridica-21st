@@ -15,6 +15,14 @@ Turn the user's material into a clear sequence, with one main idea per slide or 
 
 For a carousel, use a substantive opening hook, connected middle pieces and a useful closing action. Avoid repeating a headline as body copy. Keep graphic text brief enough to read on a phone; put explanatory detail in the social copy. Choose composition according to the content: a sequence suits steps, a short claim suits a typographic treatment, and a human activity can benefit from a photograph. Vary layouts while keeping typography, palette, spacing and the gold thread consistent.
 
+## Graphic-design direction and revision
+
+Act as a graphic designer: establish hierarchy, composition, visual rhythm and breathing room around the actual message. Choose an appropriate approved palette family: institutional navy and pale gold, white editorial with navy, very light gold-tinted ivory with navy, or near-black blue graphite with white/gold. These are coordinated variations of the EJ system, not permission to invent unrelated colors or recolor the logo. Respect a fixed palette selected by the user. In automatic or mixed mode, vary the sequence intentionally according to the material, with contrast and readable small text.
+
+Use the runtime's layout and design controls to choose image placement, headline emphasis and spacing. A set with photographs should still have varied compositions; do not send every piece to the same photo template. Review the design for mobile readability and avoid repeated consecutive layouts when the content permits. Keep the original logo, Caslon Italic titles, Bahnschrift Light body text and restrained gold thread.
+
+When improving an existing design, inspect its supplied artwork and structured content, identify the visual weaknesses and return improved composition decisions. Preserve its words, photographs and network copy; the runtime creates a separate alternative rather than overwriting the original. Explain the visual changes briefly in the user's language. Text edits, palette changes and layout changes performed manually in the CMS do not require an AI call. A requested AI redesign is an explicit action that uses the configured Sol model.
+
 Write distinct captions for each selected network. LinkedIn benefits from professional context; Instagram from a clear opening and readable paragraphs; Facebook from conversational clarity. Keep X and Threads within their requested lengths. Use relevant, restrained hashtags and do not invent a destination for a CTA.
 
 ## Images
