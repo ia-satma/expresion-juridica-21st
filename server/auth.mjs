@@ -5,6 +5,8 @@ import { betterAuth } from 'better-auth';
 import { getMigrations } from 'better-auth/db/migration';
 import { admin as adminPlugin } from 'better-auth/plugins';
 import { AUTH_DB_FILE, DATA_DIR, SECRET_FILE } from './data-paths.mjs';
+import { hostedHttps } from './web-security.mjs';
+import { privateAuthLogger } from './security-logging.mjs';
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -27,6 +29,7 @@ authDatabase.pragma('foreign_keys = ON');
 const baseUrl = process.env.BETTER_AUTH_URL || process.env.REPLIT_DEPLOYMENT_URL || `http://localhost:${process.env.PORT || 3000}`;
 const trustedOrigins = [baseUrl, 'https://expresion-juridica-21-st.replit.app', process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null, process.env.REPLIT_DEPLOYMENT_URL].filter(Boolean);
 export const auth = betterAuth({
+  logger: privateAuthLogger,
   database: authDatabase,
   secret: authSecret(),
   baseURL: baseUrl,
@@ -44,6 +47,8 @@ export const auth = betterAuth({
   },
   plugins: [adminPlugin()],
   advanced: {
+    useSecureCookies: hostedHttps(),
+    defaultCookieAttributes: { httpOnly: true, secure: hostedHttps(), sameSite: 'lax', path: '/' },
     database: {
       validateSchema: false
     }

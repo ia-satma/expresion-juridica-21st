@@ -23,7 +23,9 @@ function objectKey(filename) {
 
 function resultError(result) {
   if (!result || result.ok !== false) return null;
-  return result.error?.message || String(result.error || 'APP_STORAGE_ERROR');
+  const status = result.error?.code || result.error?.statusCode || result.error?.status;
+  const message = result.error?.message || String(result.error || '');
+  return status === 404 || /not[ _]found|no such object|404/i.test(message) ? 'APP_STORAGE_NOT_FOUND' : 'APP_STORAGE_UNAVAILABLE';
 }
 
 export async function uploadFile(filename, localPath) {

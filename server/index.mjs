@@ -1,3 +1,4 @@
+import './security-bootstrap.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -16,6 +17,8 @@ import { repairPresentationImageSizing } from './presentation-images.mjs';
 import { BRAND_CONTACT, canonicalBrandEmail, normalizePublicBrandCopy } from './brand-contact.mjs';
 import { enablePublicDiscovery, publicSiteCompression, registerSiteOptimizationRoutes, enhanceSiteDocument } from './site-optimization.mjs';
 import { authSecurityPolicy, checkLoginAttempt, recordLoginFailure, recordLoginSuccess } from './auth-security.mjs';
+import { securityMiddleware, allowedMedia, hostedHttps, safeMediaFilename } from './web-security.mjs';
+import { safeLog, publicFailure } from './security-logging.mjs';
 
 const ROOT = process.cwd();
 const PORT = Number(process.env.PORT || 3000);
@@ -288,7 +291,7 @@ async function authSessionFor(req) {
 
 function setCsrfCookie(res) {
   const token = randomToken(24);
-  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  const secure = hostedHttps() ? '; Secure' : '';
   res.setHeader('Set-Cookie', `cms_csrf=${encodeURIComponent(token)}; Path=/; SameSite=Lax${secure}`);
   return token;
 }
@@ -469,13 +472,13 @@ const upload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, MEDIA_DIR),
     filename: (_req, file, cb) => {
-      const safeName = path.basename(file.originalname).replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'archivo';
-      cb(null, `${crypto.randomUUID()}-${safeName}`);
+      const extension = path.extname(file.originalname).toLowerCase();
+      cb(null, `${crypto.randomUUID()}${extension}`);
     }
   }),
   limits: { fileSize: 250 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowed = /^(image|video|audio|application\/pdf|font\/|application\/octet-stream)/i.test(file.mimetype);
+    const allowed = allowedMedia(file);
     cb(allowed ? null : new Error('MEDIA_TYPE_NOT_ALLOWED'), allowed);
   }
 });
@@ -543,6 +546,7 @@ async function importSiteMediaOnStart() {
 
 const app = express();
 app.disable('x-powered-by');
+app.use(securityMiddleware({ getCanonicalBase: () => store.settings.canonicalBaseUrl }));
 app.use(publicSiteCompression);
 
 // Better Auth must receive the raw request stream before Express body parsers.
@@ -1320,8 +1324,10 @@ app.use(async (req, res, next) => {
 app.get('/cms-bridge.js', (_req, res) => res.sendFile(path.join(ROOT, 'public', 'cms-bridge.js')));
 app.use('/firma-assets', express.static(path.join(ROOT, 'firma-cms', 'assets'), { maxAge: '1h' }));
 app.get('/cms-media/:filename', async (req, res, next) => {
-  const filename = decodeURIComponent(req.params.filename);
+  const filename = req.params.filename;
+  if (!safeMediaFilename(filename)) return res.status(404).json({ error: 'MEDIA_NOT_FOUND' });
   const item = store.media.find((candidate) => candidate.filename === filename && !candidate.deletedAt);
+  if (!item) return res.status(404).json({ error: 'MEDIA_NOT_FOUND' });
   if (item?.storage === 'replit-app-storage') {
     try {
       const result = await downloadStorageFile(filename);
@@ -1332,10 +1338,10 @@ app.get('/cms-media/:filename', async (req, res, next) => {
     }
     return;
   }
-  if (item?.storage === 'local' || !item) return res.sendFile(path.join(MEDIA_DIR, filename), { fallthrough: true }, next);
+  if (item.storage === 'local') return res.sendFile(filename, { root: MEDIA_DIR, dotfiles: 'deny' }, next);
   return res.status(404).json({ error: 'MEDIA_NOT_FOUND' });
 });
-app.use('/cms-media', express.static(MEDIA_DIR, { fallthrough: false, maxAge: '1h' }));
+app.use('/cms-media', (_req, res) => res.status(404).end());
 app.use('/admin', express.static(ADMIN_DIR, { index: 'index.html', maxAge: 0 }));
 // HTML and hashed bundles are versioned in the exported site. Keep the static
 // layer revalidating so CMS publishes and bundle fixes appear immediately.
@@ -1343,9 +1349,9 @@ app.use(express.static(SITE_DIR, { index: false, maxAge: 0 }));
 
 app.use((error, _req, res, _next) => {
   const status = error?.message === 'MEDIA_TYPE_NOT_ALLOWED' ? 415 : error?.code === 'LIMIT_FILE_SIZE' ? 413 : 500;
-  console.error('[cms]', error);
+  safeLog('error', 'request.error', error);
   if (res.headersSent) return;
-  res.status(status).json({ error: status === 500 ? 'INTERNAL_ERROR' : error.message });
+  res.status(status).json(publicFailure(error));
 });
 
 async function start() {
@@ -1359,6 +1365,6 @@ async function start() {
 }
 
 start().catch((error) => {
-  console.error('[cms] No se pudo iniciar la autenticación Better Auth', error);
+  safeLog('error', 'application.start.failed', error);
   process.exitCode = 1;
 });

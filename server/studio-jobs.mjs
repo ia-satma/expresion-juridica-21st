@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { readStudioState, writeStudioState } from './studio-state.mjs';
+import { safeErrorCode, safeLog } from './security-logging.mjs';
 
 // Metadata and job pointers live in App Storage, so a refresh or another
 // deployment replica can retrieve the same result. No source text in pointers.
@@ -7,7 +8,7 @@ export function createStudioJobs(namespace, serialize = value => value) {
   const jobs = new Map();
   const owner = req => String(req.cmsUser.id || req.cmsUser.email);
   const ownerId = req => crypto.createHash('sha256').update(`${namespace}:${owner(req)}`).digest('hex');
-  const payload = job => ({ id: job.id, state: job.state, message: job.message, completed: job.completed, total: job.total, result: job.result || null, error: job.error || null });
+  const payload = job => ({ id: job.id, state: job.state, message: job.message, completed: job.completed, total: job.total, result: job.result || null, error: job.error ? safeErrorCode(job.error, 'DOCUMENT_GENERATION_FAILED') : null });
   function persist(job, force = false) {
     if (!force && Date.now() - (job.persistedAt || 0) < 1500) return job.writeChain || Promise.resolve();
     job.persistedAt = Date.now(); job.updatedAt = Date.now();
@@ -42,8 +43,8 @@ export function createStudioJobs(namespace, serialize = value => value) {
       Object.assign(job, { state: 'complete', result: serialize(record), message: 'Archivos guardados y listos', completed: 1, total: 1, finished: Date.now() });
       await persist(job, true);
     }).catch(async error => {
-      console.error(`[${namespace}-agent]`, error.code || error.message);
-      Object.assign(job, { state: 'failed', message: 'No se pudo completar la generación', error: error.message, finished: Date.now() });
+      safeLog('error', 'studio.generation.failed', error);
+      Object.assign(job, { state: 'failed', message: 'No se pudo completar la generación', error: safeErrorCode(error, 'DOCUMENT_GENERATION_FAILED'), finished: Date.now() });
       await persist(job, true).catch(failure => console.error('[studio-job-state]', failure.message));
     }).finally(() => { clearInterval(heartbeat); setTimeout(() => jobs.delete(job.id), 3600000).unref(); });
     return payload(job);

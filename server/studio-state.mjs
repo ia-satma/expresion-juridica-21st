@@ -23,7 +23,7 @@ export async function readStudioState(collection, id) {
   if (appStorageEnabled) {
     const result = await downloadFile(relative);
     if (result.ok) return JSON.parse(result.value.toString('utf8'));
-    if (/not found|no such object|404/i.test(result.error || '')) return null;
+    if (/not[ _]found|no such object|404/i.test(result.error || '')) return null;
     throw new Error('STUDIO_STORAGE_UNAVAILABLE');
   }
   try { return JSON.parse(await fs.readFile(path.join(ROOT, collection, `${id}.json`), 'utf8')); }

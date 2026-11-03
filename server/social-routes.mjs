@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { writeStudioState, readStudioState, listStudioPosts } from './studio-state.mjs';
 import { generateSocialSet, normalizeSocialEdits, regenerateSocialCopy, renderSocialSet, readSocialFile, socialModels, SOCIAL_SIZES } from './social-generator.mjs';
 import { preparePresentationInputs, cleanupPresentationInputs, presentationInputError } from './presentation-inputs.mjs';
+import { publicFailure, safeErrorCode, safeLog } from './security-logging.mjs';
 
 export function registerSocialRoutes(app, { store, writeStore, requireAuth, requireEditor, requireCsrf, receivePresentationInputs, audit }) {
   store.socialPosts = Array.isArray(store.socialPosts) ? store.socialPosts : [];
@@ -15,7 +16,7 @@ export function registerSocialRoutes(app, { store, writeStore, requireAuth, requ
     files: { png: item.files.png.map((_, index) => `/api/cms/posts/${item.id}/file/png?piece=${index}`), html: item.files.html.map((_, index) => `/api/cms/posts/${item.id}/file/html?piece=${index}`), pack: `/api/cms/posts/${item.id}/file/pack`, copy: `/api/cms/posts/${item.id}/file/copy` }
   });
   const userKey = req => String(req.cmsUser.id || req.cmsUser.email);
-  const jobPayload = job => ({ id: job.id, state: job.state, message: job.message, completed: job.completed, total: job.total, result: job.result || null, error: job.error || null });
+  const jobPayload = job => ({ id: job.id, state: job.state, message: job.message, completed: job.completed, total: job.total, result: job.result || null, error: job.error ? safeErrorCode(job.error, 'POST_GENERATION_FAILED') : null });
   const ownerKey = req => crypto.createHash('sha256').update(userKey(req)).digest('hex');
   const persistJob = (job, force = false) => {
     const now = Date.now();
@@ -54,15 +55,15 @@ export function registerSocialRoutes(app, { store, writeStore, requireAuth, requ
       Object.assign(job, { state: 'complete', result: publicSet(record), message: 'Diseños y copy listos', completed: record.count, total: record.count, finished: Date.now() });
       await persistJob(job, true);
     }).catch(async error => {
-      console.error('[social-agent]', error.code || error.message);
-      Object.assign(job, { state: 'failed', message: 'No se pudo completar la generación', error: error.message, finished: Date.now() });
+      safeLog('error', 'social.generation.failed', error);
+      Object.assign(job, { state: 'failed', message: 'No se pudo completar la generación', error: safeErrorCode(error, 'POST_GENERATION_FAILED'), finished: Date.now() });
       await persistJob(job, true).catch(failure => console.error('[social-job-state]', failure.message));
     }).finally(() => clearInterval(heartbeat));
     return job;
   }
   const purge = setInterval(() => { for (const [id, job] of jobs) if (job.finished && Date.now() - job.finished > 3600000) jobs.delete(id); }, 120000);
   purge.unref();
-  function fail(res, error) { res.status(error.status || 500).json({ error: error.code || 'POST_GENERATION_FAILED', detail: error.message }); }
+  function fail(res, error) { safeLog('error', 'social.request.failed', error); res.status(error.status || 500).json(publicFailure(error, 'POST_GENERATION_FAILED')); }
 
   app.get('/api/cms/posts', requireAuth, async (req, res) => {
     try {

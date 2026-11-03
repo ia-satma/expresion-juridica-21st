@@ -179,7 +179,7 @@ export function createSocialStudio({ api, state, notify, escapeHtml: h, formatDa
     catch (failure) {
       studio.busy = false; syncButtons();
       const messages = { CSRF_INVALID: 'La sesión se actualizó en otra pestaña. Tu texto se conserva; vuelve a pulsar Generar.', STUDIO_STORAGE_UNAVAILABLE: 'No se pudo conectar con el almacenamiento. Tu texto se conserva; vuelve a intentarlo.' };
-      console.error('[social-start]', failure.code || failure.message, failure.status || '');
+      console.error('[social-start]', Number(failure.status) || 0);
       error(messages[failure.code] || failure.detail || 'No se pudo iniciar la generación. Inténtalo de nuevo.');
     }
   }

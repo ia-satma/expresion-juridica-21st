@@ -4,6 +4,7 @@ import { createStudioJobs } from './studio-jobs.mjs';
 import { listStudioRecords, readStudioState, writeStudioState } from './studio-state.mjs';
 import { generateDocument, renderDocument, currentDocumentExport, normalizeDocument, LETTERHEAD_DIR } from './document-generator.mjs';
 import { presentationModels } from './presentation-generator.mjs';
+import { publicFailure, safeLog } from './security-logging.mjs';
 
 export function registerDocumentRoutes(app, { store, writeStore, requireAuth, requireEditor, requireCsrf, audit }) {
   store.documents = Array.isArray(store.documents) ? store.documents : [];
@@ -11,7 +12,7 @@ export function registerDocumentRoutes(app, { store, writeStore, requireAuth, re
   const jobs = createStudioJobs('documents', publicRecord);
   const get = async id => await readStudioState('documents', id) || store.documents.find(item => item.id === id);
   async function save(item) { await writeStudioState('documents', item.id, item); store.documents = [item, ...store.documents.filter(record => record.id !== item.id)]; writeStore(); }
-  function fail(res, error) { res.status(error.status || 500).json({ error: error.code || 'DOCUMENT_GENERATION_FAILED', detail: error.message }); }
+  function fail(res, error) { safeLog('error', 'document.request.failed', error); res.status(error.status || 500).json(publicFailure(error, 'DOCUMENT_GENERATION_FAILED')); }
   app.get('/api/cms/documents', requireAuth, async (req, res) => {
     try { store.documents = await listStudioRecords('documents', store.documents); res.set('Cache-Control', 'private, no-store').json({ documents: store.documents.map(publicRecord), generator: presentationModels(), activeJob: await jobs.active(req) }); }
     catch (error) { fail(res, error); }
