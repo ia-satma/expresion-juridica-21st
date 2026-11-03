@@ -35,7 +35,7 @@ El historial autorizado de actividad del CMS mantiene trazabilidad de acciones d
 | Navegador con CSP local | Sitio interactivo y HLS de 97 segundos en reproducción, sin errores CSP observados |
 | HTTP de producción después de Publish | 11 respuestas revisadas: CSP activa, 8 APIs privadas con 401, no-store privado y estado anónimo sin identidad/token CSRF |
 | Navegador de producción con CSP | Video de 97 segundos reproduciendo, readyState 4, sin error de medio ni errores CSP/JavaScript observados |
-| Acceso del CMS en producción | Pantalla de inicio de sesión carga sin errores CSP/JavaScript. Revisión visual de los módulos autenticados pendiente de ingreso del propietario; las pruebas completas de autenticación/guardado se ejecutaron con SQLite temporal |
+| CMS autenticado en producción | Indexación conservada; bibliotecas de 4 sets sociales, 4 documentos y 3 presentaciones cargan sin errores. Un HTML social conserva sus 5 campos editables dentro del sandbox; un documento abre con 9 párrafos justificados y vista PDF. Sin errores CSP/JavaScript observados. No se modificó contenido del propietario |
 
 Los comandos reproducibles son `node scripts/check-security.mjs`, `node scripts/check-auth-security.mjs` y `node scripts/check-secret-exposure.mjs`, además de las suites de exportación existentes. La prueba de autenticación usa un directorio y base temporales sin heredar Secrets reales; no altera usuarios de producción. Las pruebas de generación usan un proveedor simulado.
 
