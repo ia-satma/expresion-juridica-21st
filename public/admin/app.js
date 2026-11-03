@@ -1,9 +1,10 @@
 import { createContentEditor, pageTitle } from "./content-editor.js?v=20261103-editable3";
 import { currentCmsCsrf } from "./csrf.js?v=20261102-studio2";
-import { createSocialStudio } from "./social.js?v=20261103-design5";
-import { createDocumentStudio } from "./documents.js?v=20261103-design5";
-import { createGenerationProgress } from './generation-progress.js?v=20261103-design5';
-import { confirmLibraryRemoval } from './library-actions.js?v=20261103-design5';
+import { createSocialStudio } from "./social.js?v=20261103-layout6";
+import { createDocumentStudio } from "./documents.js?v=20261103-layout6";
+import { createGenerationProgress } from './generation-progress.js?v=20261103-layout6';
+import { confirmLibraryRemoval } from './library-actions.js?v=20261103-layout6';
+import { createSessionActivity } from './session-activity.js?v=20261103-layout6';
 const state = {
   user: null,
   csrf: null,
@@ -32,6 +33,11 @@ const state = {
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const presentationProgress=createGenerationProgress($('#presentation-progress'),'presentation');
+let expiredUserId=null;
+const sessionActivity=createSessionActivity({api,onExpired:()=>{
+  expiredUserId=state.user?.id||expiredUserId;state.user=null;state.csrf=null;
+  showAuth(false);$('#auth-error').textContent='La sesión terminó. Tu trabajo sin guardar sigue en esta pestaña; entra con la misma cuenta para continuar.';$('#auth-error').hidden=false;
+}});
 const contentEditor = createContentEditor({
   api, canEdit: () => ['owner','editor'].includes(state.user?.role),
   onSaved: async () => { await updateDraftCount().catch(()=>{}); if (state.pages.length) { try { state.pages=(await api('/api/cms/pages')).pages; renderPageList(); } catch {} } },
@@ -64,9 +70,10 @@ async function api(url, options = {}) {
     headers.set('Content-Type', 'application/json');
     body = JSON.stringify(body);
   }
+  const authGeneration=sessionActivity.getGeneration?.()??0;
   const response = await fetch(url, { ...options, headers, body, credentials: 'include' });
   if (response.status === 401 && !url.startsWith('/api/auth/')) {
-    showAuth(false);
+    if(authGeneration===(sessionActivity.getGeneration?.()??0)){sessionActivity.noteUnauthorized();if($('#app').dataset.state!=='auth')showAuth(false);}
     throw new Error('AUTH_REQUIRED');
   }
   if (response.status === 204) return null;
@@ -135,7 +142,7 @@ function mayUseView(view) {
   return permissions.includes('*')||permissions.includes(module)||permissions.includes('view')&&['content','media','signatures'].includes(module);
 }
 
-function showApp() {
+function showApp({resume=false}={}) {
   $('#app').dataset.state = 'ready';
   $('#auth-view').hidden = true;
   $('#password-change-view').hidden = true;
@@ -145,7 +152,11 @@ function showApp() {
   const canEdit = ['owner', 'editor'].includes(state.user?.role);
   $('#publish-button').hidden = true;
   $('#media-upload')?.closest('label')?.toggleAttribute('hidden', !canEdit);
-  $$('.nav-item[data-view]').forEach(button=>{button.hidden ||= !mayUseView(button.dataset.view);});
+  $$('.nav-item[data-view]').forEach(button=>{button.hidden = !mayUseView(button.dataset.view);});
+  if(resume&&mayUseView(state.view)){
+    if(state.view==='posts')socialStudio.load();
+    return;
+  }
   $('#view-title').textContent = 'Inicio';
   const initial=['presentations','posts','documents'].includes(location.hash.slice(1))?location.hash.slice(1):'home';
   navigate(mayUseView(initial)?initial:'dashboard');
@@ -1109,9 +1120,11 @@ async function boot() {
     try {
       await authRequest(state.setup ? '/api/auth/sign-up/email' : '/api/auth/sign-in/email', { ...body, ...(state.setup ? { name: 'Administrador del CMS' } : {}) });
       const session = await api('/api/cms/auth-state');
+      if(expiredUserId&&session.user.id!==expiredUserId){sessionActivity.stop();location.reload();return;}
       state.user = session.user; state.csrf = session.csrf;
+      const resume=sessionActivity.start(session);expiredUserId=null;
       if (session.user.mustChangePassword) showPasswordChange();
-      else showApp();
+      else showApp({resume});
     } catch (error) { $('#auth-error').textContent = error.message === 'INVALID_EMAIL_OR_PASSWORD' || error.message === 'CREDENTIALS_INVALID' ? 'Email o contraseña incorrectos.' : `No se pudo completar el acceso: ${error.message}`; $('#auth-error').hidden = false; }
   });
   $('#password-change-form').addEventListener('submit', async (event) => {
@@ -1154,7 +1167,10 @@ async function boot() {
   }
 });
 
-$('#logout-button').addEventListener('click', async () => { try { await api('/api/auth/sign-out', { method: 'POST', body: {} }); } finally { state.user = null; state.csrf = null; showAuth(false); } });
+$('#logout-button').addEventListener('click', async () => {
+  try{await api('/api/auth/sign-out',{method:'POST',body:{}});sessionActivity.stop();state.user=null;state.csrf=null;location.reload();}
+  catch(error){if(error.status===401){sessionActivity.stop();location.reload();}else notify('No se pudo confirmar el cierre de sesión. Vuelve a intentarlo.','error');}
+});
   $('#publish-button').addEventListener('click', publish);
   $('#home-publish').addEventListener('click', publish);
   $('#home-search').addEventListener('input', filterHomeFields);
@@ -1209,6 +1225,7 @@ $('#save-role-permissions')?.addEventListener('click', saveRolePermissions);
     const me = await api('/api/cms/auth-state');
     if (!me.authenticated) { showAuth(me.setupRequired); return; }
     state.user = me.user; state.csrf = me.csrf;
+    sessionActivity.start(me);
     if (me.user.mustChangePassword) showPasswordChange();
     else showApp();
   } catch (error) {

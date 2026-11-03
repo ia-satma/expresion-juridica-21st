@@ -10,6 +10,7 @@ const codes = new Set([
   'OPENAI_TIMEOUT', 'OPENAI_OUTPUT_INCOMPLETE', 'OPENAI_SLIDE_COUNT_INVALID', 'OPENAI_INVALID_API_KEY', 'OPENAI_INSUFFICIENT_QUOTA',
   'OPENAI_RATE_LIMIT_EXCEEDED', 'OPENAI_MODEL_NOT_FOUND', 'OPENAI_HTTP_400', 'OPENAI_HTTP_401', 'OPENAI_HTTP_403', 'OPENAI_HTTP_429', 'OPENAI_HTTP_500', 'OPENAI_HTTP_502', 'OPENAI_HTTP_503',
   'POST_GENERATION_FAILED', 'POST_JOB_ACTIVE', 'POST_JOB_INTERRUPTED', 'POST_JOB_NOT_FOUND', 'POST_NOT_FOUND', 'POST_VERSION_CHANGED', 'POST_COUNT_INVALID', 'POST_SIZE_INVALID',
+  'POST_TEXT_LIMIT', 'POST_PIECE_INVALID', 'POST_RENDER_PENDING', 'OPENAI_REVIEW_INVALID',
   'DOCUMENT_GENERATION_FAILED', 'DOCUMENT_JOB_NOT_FOUND', 'DOCUMENT_INPUT_INVALID', 'DOCUMENT_VERSION_CHANGED', 'DOCUMENT_NOT_FOUND', 'DOCUMENT_FILE_NOT_FOUND',
   'STUDIO_JOB_ACTIVE', 'STUDIO_JOB_INTERRUPTED', 'STUDIO_STORAGE_UNAVAILABLE', 'STUDIO_STATE_KEY_INVALID',
   'APP_STORAGE_ERROR', 'APP_STORAGE_UNAVAILABLE', 'APP_STORAGE_NOT_CONFIGURED', 'APP_STORAGE_NOT_FOUND', 'INTERNAL_ERROR'
@@ -71,6 +72,9 @@ export function publicFailure(error, fallback = 'INTERNAL_ERROR') {
   else if (code === 'MEDIA_TYPE_NOT_ALLOWED') detail = 'Elige una imagen, video, audio, PDF o fuente con un formato permitido.';
   else if (code === 'LIMIT_FILE_SIZE' || code === 'PRESENTATION_FILES_TOO_LARGE') detail = 'Los archivos superan el tamaño permitido. Reduce la selección.';
   else if (/INPUT_INVALID$|COUNT_INVALID$|SIZE_INVALID$|UNEXPECTED_FILE$|FILE_COUNT$/.test(code)) detail = 'Revisa el texto y los formatos y tamaños de los archivos seleccionados.';
+  else if (code === 'POST_TEXT_LIMIT') detail = 'El texto supera la capacidad del campo. Conserva el detalle en el copy; tu edición anterior sigue guardada.';
+  else if (code === 'POST_PIECE_INVALID') detail = 'Selecciona una pieza disponible del diseño.';
+  else if (code === 'POST_RENDER_PENDING') detail = 'El texto está guardado. Ajusta o revisa el diseño antes de descargar esta revisión.';
   else if (/OPENAI_(INVALID_API_KEY|HTTP_401|HTTP_403)$/.test(code)) detail = 'El proveedor de IA rechazó las credenciales configuradas en el servidor.';
   else if (/OPENAI_(INSUFFICIENT_QUOTA|RATE_LIMIT_EXCEEDED|HTTP_429)$/.test(code)) detail = 'El proveedor de IA alcanzó su límite de uso o saldo disponible.';
   else if (code === 'OPENAI_TIMEOUT') detail = 'La generación tardó más de lo previsto. Vuelve a intentarlo.';

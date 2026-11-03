@@ -201,7 +201,7 @@ export async function renderDocument(record, progress = () => {}) {
 export async function generateDocument({ text, title = '', mode = 'preserve', instructions = '' }, progress = () => {}) {
   text = clean(text); if (!text.trim()) throw invalid('Pega el texto que deseas convertir en documento.');
   if (text.length > 200000) throw invalid('El documento admite hasta 200 000 caracteres.');
-  let document = plainTextDocument(text, title), aiUsed = false, model = null;
+  let document = plainTextDocument(text, title), aiUsed = false, model = null, serviceTier = null;
   if (mode === 'organize') {
     if (!presentationModels().aiConfigured) throw new Error('OPENAI_API_KEY_MISSING');
     progress('Sol está organizando el texto para el documento', 0, 1, 'content');
@@ -221,7 +221,7 @@ export async function generateDocument({ text, title = '', mode = 'preserve', in
     const firstHeading = (nodes[0]?.content || []).map(run => run.text || '').join('').trim();
     if (title && !(nodes[0]?.type === 'heading' && nodes[0]?.attrs?.level === 1 && firstHeading === title)) nodes.unshift({ type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: title }] });
     nodes.forEach((node, index) => { if (index > 0 && node.type === 'heading' && node.attrs.level === 1) node.attrs.level = 2; });
-    document = normalizeDocument({ type: 'doc', content: nodes }); aiUsed = true; model = result.model || presentationModels().textModel;
+    document = normalizeDocument({ type: 'doc', content: nodes }); aiUsed = true; serviceTier=result.serviceTier||null; model = result.model || presentationModels().textModel;
   }
-  return renderDocument({ id: crypto.randomUUID(), title: title.trim() || 'Documento de Expresión Jurídica', document, sourceMode: mode, aiUsed, model, createdAt: new Date().toISOString() }, progress);
+  return renderDocument({ id: crypto.randomUUID(), title: title.trim() || 'Documento de Expresión Jurídica', document, sourceMode: mode, aiUsed, model, serviceTier, createdAt: new Date().toISOString() }, progress);
 }

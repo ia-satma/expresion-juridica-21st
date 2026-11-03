@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { BRAND_CONTACT } from './brand-contact.mjs';
 export const EDITORIAL_SKILL_ID = 'ej-content-studio-v2';
-export const SOCIAL_DESIGN_SKILL_ID = 'ej-social-design-anthropic-v1';
+export const SOCIAL_DESIGN_SKILL_ID = 'ej-social-design-v2';
 let cached;
 let socialCached;
 export function editorialSkill() {

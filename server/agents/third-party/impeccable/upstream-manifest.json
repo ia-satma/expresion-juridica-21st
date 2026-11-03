@@ -1,0 +1,43 @@
+{
+  "repository": "pbakaus/impeccable",
+  "commit": "9fadc41729c38fd47d7ae622b501558653f9d2e9",
+  "retrieved": "2026-11-03",
+  "license": "Apache-2.0",
+  "files": [
+    {
+      "file": "typeset.md",
+      "source": "skill/reference/typeset.md",
+      "url": "https://raw.githubusercontent.com/pbakaus/impeccable/9fadc41729c38fd47d7ae622b501558653f9d2e9/skill/reference/typeset.md",
+      "bytes": 6263,
+      "sha256": "925720c1d610d2a08a6811001303f395e4b2c971ef3d2506fbce43b2a1303152"
+    },
+    {
+      "file": "layout.md",
+      "source": "skill/reference/layout.md",
+      "url": "https://raw.githubusercontent.com/pbakaus/impeccable/9fadc41729c38fd47d7ae622b501558653f9d2e9/skill/reference/layout.md",
+      "bytes": 5161,
+      "sha256": "14ba132b6168bf0a7498f8c3fbbb41b73ff704da5dc3688fd842807446e54a05"
+    },
+    {
+      "file": "colorize.md",
+      "source": "skill/reference/colorize.md",
+      "url": "https://raw.githubusercontent.com/pbakaus/impeccable/9fadc41729c38fd47d7ae622b501558653f9d2e9/skill/reference/colorize.md",
+      "bytes": 4554,
+      "sha256": "dcc0c3ebb76bd22c543f45d73c283e3890e5b8a44eb5053ca2f7fdd425635c32"
+    },
+    {
+      "file": "polish.md",
+      "source": "skill/reference/polish.md",
+      "url": "https://raw.githubusercontent.com/pbakaus/impeccable/9fadc41729c38fd47d7ae622b501558653f9d2e9/skill/reference/polish.md",
+      "bytes": 6612,
+      "sha256": "c504e12ea076fd1a57b8c9ece79fbb532c54226b2b6298c5c62fa889ae1dd34d"
+    },
+    {
+      "file": "LICENSE",
+      "source": "LICENSE",
+      "url": "https://raw.githubusercontent.com/pbakaus/impeccable/9fadc41729c38fd47d7ae622b501558653f9d2e9/LICENSE",
+      "bytes": 10766,
+      "sha256": "02bb8c3b4e70190e3986c0404ad2fd8d639b4f534252d82379cc1b502b6d1812"
+    }
+  ]
+}

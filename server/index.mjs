@@ -17,6 +17,7 @@ import { repairPresentationImageSizing } from './presentation-images.mjs';
 import { BRAND_CONTACT, canonicalBrandEmail, normalizePublicBrandCopy } from './brand-contact.mjs';
 import { enablePublicDiscovery, publicSiteCompression, registerSiteOptimizationRoutes, enhanceSiteDocument } from './site-optimization.mjs';
 import { authSecurityPolicy, checkLoginAttempt, recordLoginFailure, recordLoginSuccess } from './auth-security.mjs';
+import { createUserSecurity } from './user-security.mjs';
 import { securityMiddleware, allowedMedia, hostedHttps, safeMediaFilename } from './web-security.mjs';
 import { safeLog, publicFailure } from './security-logging.mjs';
 import { registerContentEditorRoutes, pendingFieldIds, replaceTemplateText, editablePages } from './content-editor.mjs';
@@ -153,6 +154,7 @@ function queueStoreUpload(snapshot=`${JSON.stringify(store,null,2)}\n`) {
 
 await restoreCmsStoreFromAppStorage();
 let store = readStore();
+const userSecurity = createUserSecurity({ database:authDatabase, auth, secret:auth.options.secret, onAudit:(action,detail)=>{audit(action,null,detail);return writeStore();} });
 const contactRepository = createContactRepository(store);
 let inventory = buildInventory();
 enablePublicDiscovery(store, writeStore);
@@ -313,10 +315,11 @@ function normalizeSettings(input = {}) {
 
 async function authSessionFor(req) {
   try {
-    const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+    const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers), query:{disableCookieCache:true,disableRefresh:true} });
     const createdAt = Date.parse(session?.session?.createdAt || '');
     const maxAgeMs = authSecurityPolicy.sessionHours * 60 * 60 * 1000;
-    if (Number.isFinite(createdAt) && Date.now() - createdAt >= maxAgeMs) return null;
+    if (Number.isFinite(createdAt) && Date.now() - createdAt >= maxAgeMs) { userSecurity.revokeSession(session); return null; }
+    if (!userSecurity.validateSession(session).valid) return null;
     return session;
   } catch (error) {
     console.error('[cms-auth] session lookup failed', error.message);
@@ -639,12 +642,13 @@ async function authRequestHandler(req, res, next) {
   return toNodeHandler(auth)(req, res, next);
 }
 
-app.all('/api/auth/*splat', authRequestHandler);
+app.all('/api/auth/*splat', userSecurity.authHandler);
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 registerSiteOptimizationRoutes(app, { getStore: () => store, getInventory: () => inventory, requireAuth });
 registerContentEditorRoutes(app, { getInventory: () => inventory, store, writeStore, requireAuth, requireEditor, requireCsrf, audit });
+userSecurity.registerActivityRoutes(app,{requireSession,requireCsrf});
 
 registerContactFormRoute(app, { store, writeStore, persistSubmission:item=>contactRepository.save(item), findSubmission:id=>contactRepository.get(id) });
 
@@ -667,7 +671,7 @@ app.get('/api/cms/auth-state', async (req, res) => {
   const sessionId = session.session?.id;
   if (sessionId && !store.audit.some((item) => item.action === 'auth.login' && item.detail?.sessionId === sessionId)) { audit('auth.login', session.user, { sessionId, role: admin.role }); writeStore(); }
   const csrf = setCsrfCookie(res);
-  res.json({ authenticated: true, setupRequired: false, csrf, user: { ...session.user, role: admin.role, permissions:cmsPermissions({cmsAdmin:admin},store), mustChangePassword: Boolean(admin.mustChangePassword) }, sessionExpiresAt: session.session?.expiresAt || null, sessionMaxAgeHours: authSecurityPolicy.sessionHours });
+  res.json({ authenticated: true, setupRequired: false, csrf, user: { ...session.user, role: admin.role, permissions:cmsPermissions({cmsAdmin:admin},store), mustChangePassword: Boolean(admin.mustChangePassword) }, sessionExpiresAt: session.session?.expiresAt || null, sessionMaxAgeHours: authSecurityPolicy.sessionHours, userSecurity:userSecurity.sessionInfo(session) });
 });
 
 app.post('/api/cms/auth/change-password', requireSession, requireCsrf, async (req, res) => {
@@ -680,6 +684,7 @@ app.post('/api/cms/auth/change-password', requireSession, requireCsrf, async (re
       body: { currentPassword, newPassword, revokeOtherSessions: false },
       headers: fromNodeHeaders(req.headers)
     });
+    userSecurity.revokeUserSessions(req.cmsUser.id,{exceptId:req.cmsSession.session.id});
     req.cmsAdmin.mustChangePassword = false;
     req.cmsAdmin.updatedAt = now();
     audit('auth.password.change', req.cmsUser);
@@ -1272,6 +1277,7 @@ app.post('/api/cms/users/:id/reset-password', requireAuth, requireOwner, require
     if (!target?.userId) return res.status(404).json({ error: 'USER_NOT_FOUND' });
     const temporary = temporaryPassword();
     await auth.api.setUserPassword({ body: { userId: target.userId, newPassword: temporary }, headers: fromNodeHeaders(req.headers) });
+    userSecurity.revokeUserSessions(target.userId);
     target.mustChangePassword = true;
     target.updatedAt = now();
     audit('auth.user.password.reset', req.cmsUser, { userId: target.userId });

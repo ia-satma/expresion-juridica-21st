@@ -1,9 +1,10 @@
 import { publicFailure, safeLog } from './security-logging.mjs';
 
 // Recoverable library removal: source files remain private and can be restored.
-export function registerStudioTrashRoutes(app,{base,getRecord,saveRecord,serialize=value=>value,requireAuth,requireEditor,requireCsrf,audit,writeStore,action}) {
+export function registerStudioTrashRoutes(app,{base,getRecord,saveRecord,serialize=value=>value,requireAuth,requireEditor,requireCsrf,audit,writeStore,action,lockRecord=(_id,work)=>work()}) {
   const mutate=restore=>async(req,res)=>{
     try {
+      await lockRecord(req.params.id,async()=>{
       const original=await getRecord(req.params.id);
       if(!original)return res.status(404).json({error:'RECORD_NOT_FOUND'});
       if(req.body?.version&&req.body.version!==original.updatedAt)return res.status(409).json({error:'STUDIO_VERSION_CHANGED'});
@@ -13,6 +14,7 @@ export function registerStudioTrashRoutes(app,{base,getRecord,saveRecord,seriali
       audit(action+(restore?'.restore':'.delete'),req.cmsUser,{recordId:record.id});
       await writeStore();
       res.json({ok:true,recoverable:true,record:serialize(record)});
+      });
     }catch(error){safeLog('error','studio.library.failed',error);res.status(error.status||500).json(publicFailure(error,'STUDIO_STORAGE_UNAVAILABLE'));}
   };
   app.delete(base+'/:id',requireAuth,requireEditor,requireCsrf,mutate(false));

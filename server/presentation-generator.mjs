@@ -11,6 +11,7 @@ import { appStorageEnabled, uploadFile } from './app-storage.mjs';
 import { DATA_DIR } from './data-paths.mjs';
 import { EJ_BRAND as B, presentationBrandAssets } from './presentation-brand.mjs';
 import { editorialSkill, EDITORIAL_SKILL_ID } from './editorial-skill.mjs';
+import { requestWithTextServiceTier, textServiceTier as configuredTextServiceTier } from './openai-service-tier.mjs';
 
 const PptxGenJS = PptxGenJSImport?.default ?? PptxGenJSImport;
 const WORK_DIR = path.join(DATA_DIR, 'generated-presentations');
@@ -18,7 +19,7 @@ const clean = (value, max = 10000) => String(value ?? '').replace(/\u0000/g, '')
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
 const slug = value => clean(value, 100).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 55) || 'presentacion';
 export function presentationModels() {
-  return { aiConfigured: Boolean(process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY), textModel: process.env.OPENAI_PRESENTATION_MODEL || 'gpt-6.1-sol', imageModel: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2', skill: EDITORIAL_SKILL_ID, brand: { id: B.id, name: B.name, headingFont: 'Libre Caslon Text Italic', bodyFont: 'Bahnschrift Light', colors: [B.navy, B.night, B.gold, B.gray, B.paper] } };
+  return { aiConfigured: Boolean(process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY), textModel: process.env.OPENAI_PRESENTATION_MODEL || 'gpt-6.1-sol', textServiceTier:configuredTextServiceTier(), imageModel: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst', skill: EDITORIAL_SKILL_ID, brand: { id: B.id, name: B.name, headingFont: 'Libre Caslon Text Italic', bodyFont: 'Bahnschrift Light', colors: [B.navy, B.night, B.gold, B.gray, B.paper] } };
 }
 const visualSchema = { type: 'object', additionalProperties: false, properties: { type: { type: 'string', enum: ['none', 'process', 'bar', 'image'] }, labels: { type: 'array', maxItems: 5, items: { type: 'string' } }, values: { type: 'array', maxItems: 5, items: { type: 'number' } } }, required: ['type', 'labels', 'values'] };
 const schema = { type: 'object', additionalProperties: false, properties: { title: { type: 'string' }, subtitle: { type: 'string' }, imageContext: { type: 'string' }, slides: { type: 'array', minItems: 3, maxItems: 20, items: { type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['title', 'content', 'closing'] }, eyebrow: { type: 'string' }, title: { type: 'string' }, body: { type: 'string' }, bullets: { type: 'array', maxItems: 4, items: { type: 'string' } }, visual: visualSchema }, required: ['kind', 'eyebrow', 'title', 'body', 'bullets', 'visual'] } } }, required: ['title', 'subtitle', 'imageContext', 'slides'] };
@@ -39,11 +40,12 @@ export async function openaiRequest(endpoint, body, timeout = 120000) {
   const base = (process.env.OPENAI_BASE_URL || process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
   const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), timeout);
   try {
-    const response = await fetch(`${base}${endpoint}`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` }, body: JSON.stringify(body), signal: ctl.signal });
-    const result = await response.json();
-    if (!response.ok) throw new Error(`OPENAI_${result.error?.code || `HTTP_${response.status}`}`);
-    return result;
-  } catch (error) { throw new Error(error.name === 'AbortError' ? 'OPENAI_TIMEOUT' : error.message); }
+    return await requestWithTextServiceTier(endpoint,body,async requestBody=>{
+      const response=await fetch(`${base}${endpoint}`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${key}`},body:JSON.stringify(requestBody),signal:ctl.signal});
+      let result;try{result=await response.json();}catch{throw new Error('OPENAI_RESPONSE_INVALID');}
+      return {ok:response.ok,status:response.status,result};
+    });
+  } catch (error) { throw new Error(error.name === 'AbortError' ? 'OPENAI_TIMEOUT' : /^OPENAI_[a-zA-Z0-9_-]{1,100}$/.test(error.message||'')?error.message:'OPENAI_REQUEST_FAILED'); }
   finally { clearTimeout(timer); }
 }
 async function outline({ topic, source, count, language, includeVisuals, webSearch }) {
@@ -59,7 +61,7 @@ async function outline({ topic, source, count, language, includeVisuals, webSear
     if (annotation.type !== 'url_citation' || !/^https?:\/\//i.test(annotation.url || '') || sources.some(s => s.url === annotation.url)) continue;
     sources.push({ title: clean(annotation.title || annotation.url, 200), url: annotation.url });
   }
-  return { data: normalize(JSON.parse(text), count, includeVisuals), aiUsed: true, model: result.model || models.textModel, sources: sources.slice(0, 12), warning: null };
+  return { data: normalize(JSON.parse(text), count, includeVisuals), aiUsed: true, model: result.model || models.textModel, serviceTier:result.serviceTier||null, sources: sources.slice(0, 12), warning: null };
 }
 async function generateSlideImage(data, slide) {
   const model = presentationModels().imageModel;
@@ -253,7 +255,7 @@ export async function generatePresentation({ topic = '', sourceText = '', slideC
   if (selectedFormats.includes('png')) {exporting('Preparando la descarga de imágenes'); const zip = new JSZip(); pngs.forEach((png, i) => zip.file(`${name}-${String(i + 1).padStart(2, '0')}.png`, png)); files.imagesZip = await saveFile(id, `${name}-diapositivas.zip`, await zip.generateAsync({ type: 'nodebuffer' }));exported++; }
   if (generated.length){exporting('Guardando las fotografías generadas');files.artwork = await saveFile(id, `${name}-imagen-ia.png`, generated[0].buffer);exported++;}
   progress('Archivos preparados',exported,exportTotal,'export');
-  return { id, agentSkill: EDITORIAL_SKILL_ID, title: data.title, subtitle: data.subtitle, topic: clean(topic), sourceLength: clean(sourceText, 120000).length, language, style, branding, brandProfile: B.id, formats: selectedFormats, documentNames, uploadedImageCount: supportImages.length, includeVisuals, webSearch, sources: result.sources, slideCount: count, aiUsed: result.aiUsed, model: result.model, imageUsed: Boolean(generated.length), imageModel: generated.length ? presentationModels().imageModel : null, generatedImageCount: generated.length, warning: result.warning, createdAt: new Date().toISOString(), outline: data, files };
+  return { id, agentSkill: EDITORIAL_SKILL_ID, title: data.title, subtitle: data.subtitle, topic: clean(topic), sourceLength: clean(sourceText, 120000).length, language, style, branding, brandProfile: B.id, formats: selectedFormats, documentNames, uploadedImageCount: supportImages.length, includeVisuals, webSearch, sources: result.sources, slideCount: count, aiUsed: result.aiUsed, model: result.model, serviceTier:result.serviceTier||null, imageUsed: Boolean(generated.length), imageModel: generated.length ? presentationModels().imageModel : null, generatedImageCount: generated.length, warning: result.warning, createdAt: new Date().toISOString(), outline: data, files };
 }
 export function filePathForPresentation(file) { return file?.localPath ? path.join(process.cwd(), file.localPath) : null; }
 export function ensurePresentationDir() { fsSync.mkdirSync(WORK_DIR, { recursive: true }); return WORK_DIR; }
