@@ -14,6 +14,7 @@ import { registerSocialRoutes } from './social-routes.mjs';
 import { registerDocumentRoutes } from './document-routes.mjs';
 import { repairPresentationImageSizing } from './presentation-images.mjs';
 import { BRAND_CONTACT, canonicalBrandEmail, normalizePublicBrandCopy } from './brand-contact.mjs';
+import { enablePublicDiscovery, publicSiteCompression, registerSiteOptimizationRoutes, enhanceSiteDocument } from './site-optimization.mjs';
 import { authSecurityPolicy, checkLoginAttempt, recordLoginFailure, recordLoginSuccess } from './auth-security.mjs';
 
 const ROOT = process.cwd();
@@ -33,7 +34,7 @@ const defaultSettings = () => ({
   siteDescription: 'Asesoría y defensa jurídica especializada para personas, empresas e instituciones.',
   defaultLocale: 'es-MX',
   canonicalBaseUrl: 'https://expresion-juridica-21-st.replit.app',
-  indexingEnabled: false,
+  indexingEnabled: true,
   searchConsoleVerification: '',
   analytics: {
     enabled: false,
@@ -118,6 +119,7 @@ function readStore() {
 
 let store = readStore();
 let inventory = buildInventory();
+enablePublicDiscovery(store, writeStore);
 
 function writeStore() {
   const temp = `${STORE_FILE}.tmp`;
@@ -376,7 +378,7 @@ function applyField($, field, value) {
 }
 
 function injectBridge($) {
-  const script = '<script src="/cms-bridge.js" defer data-cms-bridge="true"></script>';
+  const script = '<script src="/cms-bridge.js?v=20261103" defer data-cms-bridge="true"></script>';
   if ($('script[data-cms-bridge="true"]').length) return;
   if ($('body').length) $('body').append(script);
   else $('html').append(script);
@@ -452,6 +454,7 @@ function renderHtml(file, preview = false) {
     if (Object.prototype.hasOwnProperty.call(overrides, field.id)) applyField($, field, normalizePublicBrandCopy(overrides[field.id]));
   }
   injectSiteMetadata($, page, preview);
+  enhanceSiteDocument($, { page, settings: store.settings, inventory, preview });
   applyNavigation($);
   injectBridge($);
   return $.html();
@@ -540,6 +543,7 @@ async function importSiteMediaOnStart() {
 
 const app = express();
 app.disable('x-powered-by');
+app.use(publicSiteCompression);
 
 // Better Auth must receive the raw request stream before Express body parsers.
 // Express 5 uses the `*splat` catch-all syntax documented by Better Auth.
@@ -600,6 +604,7 @@ app.all('/api/auth/*splat', authRequestHandler);
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+registerSiteOptimizationRoutes(app, { getStore: () => store, getInventory: () => inventory, requireAuth });
 
 app.post('/api/public/contact', (req, res) => {
   const body = req.body || {};

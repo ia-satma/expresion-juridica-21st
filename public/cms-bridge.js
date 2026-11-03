@@ -73,9 +73,9 @@
       if (current === 'granted') loadAnalytics(settings);
       return;
     }
-    const banner = document.createElement('aside');
+    const banner = document.createElement('div');
     banner.id = 'cms-cookie-banner';
-    banner.setAttribute('role', 'dialog');
+    banner.setAttribute('role', 'region');
     const title = cookie.title || 'Privacidad y cookies';
     const text = cookie.text || '';
     const privacyUrl = safeUrl(cookie.privacyUrl || '/aviso-de-privacidad/');
