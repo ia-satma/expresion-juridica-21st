@@ -8,7 +8,7 @@ import { appStorageEnabled, uploadFile, downloadFile } from './app-storage.mjs';
 const ROOT = path.join(DATA_DIR, 'studio-state');
 const client = appStorageEnabled ? new Client(process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID ? { bucketId: process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID } : undefined) : null;
 function keyFor(collection, id) {
-  if (!['posts', 'documents', 'jobs', 'owners'].includes(collection) || !/^[a-z0-9-]{16,80}$/.test(id)) throw new Error('STUDIO_STATE_KEY_INVALID');
+  if (!['posts', 'documents', 'jobs', 'owners', 'submissions'].includes(collection) || !/^[a-z0-9-]{16,80}$/.test(id)) throw new Error('STUDIO_STATE_KEY_INVALID');
   return `studio-state/${collection}/${id}.json`;
 }
 export async function writeStudioState(collection, id, value) {
@@ -30,7 +30,7 @@ export async function readStudioState(collection, id) {
   catch (error) { if (error.code === 'ENOENT') return null; throw error; }
 }
 export async function listStudioRecords(collection, fallback = []) {
-  if (!['posts', 'documents'].includes(collection)) throw new Error('STUDIO_STATE_KEY_INVALID');
+  if (!['posts', 'documents', 'submissions'].includes(collection)) throw new Error('STUDIO_STATE_KEY_INVALID');
   let ids;
   if (client) {
     const prefix = `${DATA_SCOPE}/studio-state/${collection}/`;
@@ -45,6 +45,6 @@ export async function listStudioRecords(collection, fallback = []) {
     const batch = await Promise.all(ids.slice(start, start + 6).map(id => readStudioState(collection, id)));
     for (const record of batch) if (record) records.set(record.id, record);
   }
-  return [...records.values()].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  return [...records.values()].sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
 }
 export const listStudioPosts = fallback => listStudioRecords('posts', fallback);

@@ -160,9 +160,17 @@ export function inventoryHtml(html, page) {
   $('span, div').each((_, element) => {
     if ($(element).children().length) return;
     const text = textFromElement($, element);
-    if (!text || text.length > 180) return;
+    if (!text) return;
     const selector = cssPath($, element);
     addField(fields, seen, { page, selector, attribute: 'html', kind: 'html', original: $(element).html() || text, element, section: sectionFor($, element) });
+  });
+
+  // Direct copy in containers is still client content, including long labels.
+  // Keep existing IDs and avoid replacing any nested controls or media.
+  $('span,div,form,section').each((_, element) => {
+    if ($(element).closest('script,style,svg').length || !$(element).children().length) return;
+    const direct = (element.children || []).filter(node => node.type === 'text' && String(node.data || '').trim()).map(node => String(node.data).replace(/\s+/g,' ').trim()).join(' ');
+    if (direct) addField(fields, seen, { page, selector: cssPath($,element), attribute: 'text', kind: 'text', original: direct, element, section: sectionFor($,element) });
   });
 
   for (const [selector, attribute, kind] of ATTR_FIELDS) {

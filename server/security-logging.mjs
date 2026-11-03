@@ -62,6 +62,7 @@ export function publicFailure(error, fallback = 'INTERNAL_ERROR') {
   const code = safeErrorCode(error, fallback);
   let detail = 'No se pudo completar la operación. Inténtalo de nuevo.';
   if (code === 'AUTH_REQUIRED') detail = 'Inicia sesión para continuar.';
+  else if (['ROLE_REQUIRED','OWNER_REQUIRED'].includes(code)) detail = 'Tu cuenta no tiene permiso para realizar esta acción.';
   else if (code === 'CSRF_INVALID') detail = 'Actualiza el apartado y vuelve a guardar.';
   else if (code === 'ORIGIN_NOT_ALLOWED') detail = 'Abre el CMS desde la dirección oficial del sitio.';
   else if (/VERSION_CHANGED$/.test(code)) detail = 'El contenido cambió en otra edición. Abre la versión más reciente.';

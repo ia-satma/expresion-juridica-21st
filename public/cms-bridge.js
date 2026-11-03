@@ -1,4 +1,5 @@
 (() => {
+  const composeMail = document.currentScript?.dataset.cmsOpenMail !== 'false';
   const preview = new URLSearchParams(window.location.search).get('cms_preview') === '1';
   const path = `${window.location.pathname.endsWith('/') ? window.location.pathname : `${window.location.pathname}/`}`;
   const consentName = (version) => `cms_cookie_consent_${String(version || '1.0').replace(/[^a-z0-9]/gi, '_')}`;
@@ -27,18 +28,21 @@
     return '#';
   }
 
-  function applyOverrides(overrides) {
+  function applyOverrides(overrides, bindings = {}) {
     for (const [id, value] of Object.entries(overrides || {})) {
-      const element = document.querySelector(`[data-cms-key="${CSS.escape(id)}"]`);
+      const binding = bindings[id];
+      const element = document.querySelector(`[data-cms-key="${CSS.escape(id)}"]`) || (binding?.selector ? document.querySelector(binding.selector) : null);
       if (!element) continue;
-      const attribute = element.getAttribute('data-cms-attr') || 'html';
-      if (attribute === 'html') element.innerHTML = value;
+      if (element.closest('form[data-cms-submitting="true"],form[data-cms-sent="true"]') && element.matches('button[type="submit"],[role="status"]')) continue;
+      const attribute = binding?.attribute || element.getAttribute('data-cms-attr') || 'html';
+      if (attribute === 'html') { const template=document.createElement('template');template.innerHTML=value;if(element.innerHTML!==template.innerHTML) element.innerHTML=template.innerHTML; }
       else if (attribute === 'text') {
         const textNode = Array.from(element.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
         if (textNode) textNode.textContent = value;
         else element.textContent = value;
       } else {
-        element.setAttribute(attribute, attribute === 'href' || attribute === 'src' || attribute === 'poster' ? safeUrl(value) : value);
+        const next=attribute === 'href' || attribute === 'src' || attribute === 'poster' ? (/^(?:mailto:|tel:)/i.test(value)&&attribute==='href'?value:safeUrl(value)) : value;
+        if(element.getAttribute(attribute)!==next) element.setAttribute(attribute,next);
       }
     }
   }
@@ -98,52 +102,59 @@
   }
 
   function bindCmsForms() {
-    document.querySelectorAll('form#consulta, form[data-cms-form="contact"]').forEach((form) => {
+    document.querySelectorAll('form#consulta, form[data-cms-form="contact"]').forEach(form => {
       if (form.dataset.cmsBound === 'true') return;
-      form.dataset.cmsBound = 'true';
-      form.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        const privacy = form.querySelector('#privacidad');
-        const status = form.querySelector('[role="status"]') || form.querySelector('p:last-of-type');
-        if (!form.checkValidity() || privacy && !privacy.checked) {
-          form.reportValidity();
-          if (status) status.textContent = 'Confirma el aviso de privacidad para enviar la solicitud.';
-          return;
-        }
-        const payload = Object.fromEntries(new FormData(form).entries());
-        payload.privacidad = Boolean(privacy?.checked);
-        payload.source = window.location.pathname;
-        const submit = form.querySelector('button[type="submit"]');
-        if (submit) submit.disabled = true;
-        if (status) status.textContent = 'Enviando solicitud…';
+      form.dataset.cmsBound='true';
+      form.addEventListener('submit',async event=>{
+        event.preventDefault();event.stopImmediatePropagation();
+        if(form.dataset.cmsSubmitting==='true')return;
+        let status=form.querySelector('[data-cms-contact-status]');
+        if(!status){status=document.createElement('p');status.dataset.cmsContactStatus='true';status.setAttribute('role','status');status.setAttribute('aria-live','polite');status.className='text-sm leading-relaxed';form.appendChild(status);}
+        const privacy=form.querySelector('#privacidad');
+        if(!form.checkValidity()||privacy&&!privacy.checked){form.reportValidity();status.textContent='Completa los campos y confirma el aviso de privacidad.';return;}
+        const payload=Object.fromEntries(new FormData(form).entries());
+        payload.privacidad=Boolean(privacy?.checked);payload.source=location.pathname;
+        form.dataset.cmsRequestKey ||= crypto.randomUUID();payload.requestKey=form.dataset.cmsRequestKey;
+        const submit=form.querySelector('button[type="submit"]');
+        form.dataset.cmsSubmitting='true';form.dataset.cmsSent='false';
+        if(submit)submit.disabled=true;status.textContent='Guardando tu solicitud…';
         try {
-          const response = await fetch('/api/public/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-          const result = await response.json().catch(() => ({}));
-          if (!response.ok) throw new Error(result.error || 'CONTACT_SEND_FAILED');
-          if (status) status.textContent = result.message || 'Solicitud recibida.';
-          form.reset();
-        } catch {
-          if (status) status.textContent = 'No pudimos enviar la solicitud. Inténtalo de nuevo.';
-        } finally {
-          if (submit) submit.disabled = false;
-        }
+          const response=await fetch('/api/public/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+          const result=await response.json().catch(()=>({}));
+          if(!response.ok||!result.ok)throw new Error('CONTACT_SEND_FAILED');
+          const recipient=/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$/.test(result.contactEmail||'')?result.contactEmail:'Consultoria@expresionjuridica.com';
+          const subject=`Consulta: ${payload.materia}`;
+          const body=`Nombre: ${payload.nombre}\nCorreo: ${payload.correo}\nÁrea: ${payload.materia}\n\n${payload.mensaje}`;
+          const mailto=`mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+          form.dataset.cmsSent='true';form.reset();delete form.dataset.cmsRequestKey;
+          status.textContent='Tu solicitud quedó guardada. Completa el envío en tu aplicación de correo. ';
+          const link=document.createElement('a');link.href=mailto;link.textContent='Abrir correo';link.style.textDecoration='underline';status.appendChild(link);
+          if(composeMail&&form.dataset.cmsOpenMail!=='false'){try{window.location.assign(mailto);}catch{/* The visible link remains available if the browser blocks the mail app. */}}
+        }catch{status.textContent='No pudimos guardar tu solicitud. Tu información sigue aquí; inténtalo de nuevo.';}
+        finally{form.dataset.cmsSubmitting='false';if(submit)submit.disabled=false;}
       });
     });
   }
+
+  // Bind immediately and after hydration; saving does not depend on Analytics or the CMS read request.
+  let synchronizeOverrides=()=>{};
+  bindCmsForms();
+  new MutationObserver(()=>{bindCmsForms();synchronizeOverrides();}).observe(document.body,{childList:true,characterData:true,subtree:true});
 
   fetch(`/api/cms/public?path=${encodeURIComponent(path)}&preview=${preview ? '1' : '0'}`, { credentials: 'include' })
     .then((response) => response.ok ? response.json() : null)
     .then((payload) => {
       if (!payload) return;
-      applyOverrides(payload.overrides);
+      const overrides=payload.renderedOverrides || payload.overrides;
+      applyOverrides(overrides,payload.bindings);
       applyNavigation(payload.settings);
       const consent = readCookie(consentName(payload.settings?.cookie?.version));
       if (consent === 'granted') loadAnalytics(payload.settings);
       showCookieBanner(payload.settings);
       bindCmsForms();
       setTimeout(bindCmsForms, 0);
-      new MutationObserver(bindCmsForms).observe(document.body, { childList: true, subtree: true });
+      let queued=false;
+      synchronizeOverrides=()=>{if(!queued){queued=true;requestAnimationFrame(()=>{queued=false;applyOverrides(overrides,payload.bindings);});}};
       document.documentElement.dataset.cmsReady = 'true';
     })
     .catch(() => {

@@ -19,6 +19,10 @@ import { enablePublicDiscovery, publicSiteCompression, registerSiteOptimizationR
 import { authSecurityPolicy, checkLoginAttempt, recordLoginFailure, recordLoginSuccess } from './auth-security.mjs';
 import { securityMiddleware, allowedMedia, hostedHttps, safeMediaFilename } from './web-security.mjs';
 import { safeLog, publicFailure } from './security-logging.mjs';
+import { registerContentEditorRoutes, pendingFieldIds, replaceTemplateText, editablePages } from './content-editor.mjs';
+import { registerContactFormRoute } from './contact-form.mjs';
+import { createContactRepository } from './contact-store.mjs';
+import { cmsPermissions, cmsRequestAllowed } from './cms-permissions.mjs';
 
 const ROOT = process.cwd();
 const PORT = Number(process.env.PORT || 3000);
@@ -120,14 +124,42 @@ function readStore() {
   }
 }
 
+async function restoreCmsStoreFromAppStorage() {
+  if (!appStorageEnabled) return;
+  try {
+    const result=await downloadStorageFile('cms.json');
+    if(!result.ok||!result.value?.length)return;
+    JSON.parse(result.value.toString('utf8'));
+    const temporaryFile=STORE_FILE+'.remote';
+    fs.writeFileSync(temporaryFile,result.value,{mode:0o600});fs.renameSync(temporaryFile,STORE_FILE);
+  } catch(error) { safeLog('error','cms.restore.failed',error); }
+}
+
+let storeUploadQueue=Promise.resolve();
+function queueStoreUpload(snapshot=`${JSON.stringify(store,null,2)}\n`) {
+  if(!appStorageEnabled)return Promise.resolve();
+  const work=storeUploadQueue.then(async()=>{
+    const file=path.join(DATA_DIR,`.cms-upload-${crypto.randomUUID()}.json`);
+    try { fs.writeFileSync(file,snapshot,{mode:0o600});const result=await uploadStorageFile('cms.json',file);if(!result?.ok)throw new Error('APP_STORAGE_UNAVAILABLE'); }
+    finally {fs.rmSync(file,{force:true});}
+  });
+  // Handle legacy callers too, while returning rejection to saves that await durability.
+  storeUploadQueue=work.catch(error=>safeLog('error','cms.persistence.failed',error));
+  return work;
+}
+
+await restoreCmsStoreFromAppStorage();
 let store = readStore();
+const contactRepository = createContactRepository(store);
 let inventory = buildInventory();
 enablePublicDiscovery(store, writeStore);
 
-function writeStore() {
+function writeStore({localOnly=false}={}) {
   const temp = `${STORE_FILE}.tmp`;
-  fs.writeFileSync(temp, `${JSON.stringify(store, null, 2)}\n`);
+  const snapshot=`${JSON.stringify(store, null, 2)}\n`;
+  fs.writeFileSync(temp, snapshot, {mode:0o600});
   fs.renameSync(temp, STORE_FILE);
+  return localOnly?Promise.resolve():queueStoreUpload(snapshot);
 }
 
 function now() {
@@ -311,6 +343,7 @@ async function requireAuth(req, res, next) {
   const admin = await attachCmsSession(req);
   if (!admin) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   if (admin.mustChangePassword) return res.status(403).json({ error: 'PASSWORD_CHANGE_REQUIRED' });
+  if (!cmsRequestAllowed(req,store)) return res.status(403).json({error:'ROLE_REQUIRED'});
   next();
 }
 
@@ -373,16 +406,15 @@ function applyField($, field, value) {
   if (!target.length) return;
   if (field.attribute === 'html') target.html(sanitizeMarkup(value));
   else if (field.attribute === 'text') {
-    const textNode = target.contents().toArray().find((node) => node.type === 'text' && String(node.data || '').trim());
-    if (textNode) textNode.data = String(value);
+    if (target.contents().toArray().some(node => node.type === 'text' && String(node.data || '').trim())) target.html(replaceTemplateText(target.html(), String(value), true));
     else target.text(String(value));
   }
   else target.attr(field.attribute, sanitizeAttribute(field.attribute, value));
 }
 
 function injectBridge($) {
-  const script = '<script src="/cms-bridge.js?v=20261103" defer data-cms-bridge="true"></script>';
-  if ($('script[data-cms-bridge="true"]').length) return;
+  const script = '<script src="/cms-bridge.js?v=20261103-content2" defer data-cms-bridge="true"></script>';
+  if ($('script[data-cms-bridge="true"]').length) { $('script[data-cms-bridge="true"]').attr('src','/cms-bridge.js?v=20261103-content2'); return; }
   if ($('body').length) $('body').append(script);
   else $('html').append(script);
 }
@@ -609,33 +641,9 @@ app.all('/api/auth/*splat', authRequestHandler);
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 registerSiteOptimizationRoutes(app, { getStore: () => store, getInventory: () => inventory, requireAuth });
+registerContentEditorRoutes(app, { getInventory: () => inventory, store, writeStore, requireAuth, requireEditor, requireCsrf, audit });
 
-app.post('/api/public/contact', (req, res) => {
-  const body = req.body || {};
-  if (String(body.website || '').trim()) return res.status(400).json({ error: 'INVALID_REQUEST' });
-  const name = String(body.nombre || '').trim().slice(0, 160);
-  const email = String(body.correo || '').trim().toLowerCase().slice(0, 254);
-  const subject = String(body.materia || '').trim().slice(0, 100);
-  const message = String(body.mensaje || '').trim().slice(0, 600);
-  const consent = Boolean(body.privacidad);
-  if (!name || !/^\S+@\S+\.\S+$/.test(email) || !subject || !message || !consent) return res.status(422).json({ error: 'CONTACT_FIELDS_INVALID' });
-  const item = {
-    id: crypto.randomUUID(),
-    name,
-    email,
-    subject,
-    message,
-    consentAt: now(),
-    status: 'new',
-    createdAt: now(),
-    source: String(body.source || '/contacto/').slice(0, 200),
-    userAgent: String(req.get('user-agent') || '').slice(0, 300)
-  };
-  store.submissions.unshift(item);
-  store.submissions = store.submissions.slice(0, 2000);
-  writeStore();
-  res.status(201).json({ ok: true, id: item.id, message: 'Solicitud recibida. Nos pondremos en contacto pronto.' });
-});
+registerContactFormRoute(app, { store, writeStore, persistSubmission:item=>contactRepository.save(item), findSubmission:id=>contactRepository.get(id) });
 
 app.get('/healthz', (_req, res) => res.json({ ok: true, service: 'expresion-juridica-cms', inventory: inventory.pages.length, dataScope: DATA_SCOPE, appStorage: appStorageEnabled }));
 
@@ -656,7 +664,7 @@ app.get('/api/cms/auth-state', async (req, res) => {
   const sessionId = session.session?.id;
   if (sessionId && !store.audit.some((item) => item.action === 'auth.login' && item.detail?.sessionId === sessionId)) { audit('auth.login', session.user, { sessionId, role: admin.role }); writeStore(); }
   const csrf = setCsrfCookie(res);
-  res.json({ authenticated: true, setupRequired: false, csrf, user: { ...session.user, role: admin.role, mustChangePassword: Boolean(admin.mustChangePassword) }, sessionExpiresAt: session.session?.expiresAt || null, sessionMaxAgeHours: authSecurityPolicy.sessionHours });
+  res.json({ authenticated: true, setupRequired: false, csrf, user: { ...session.user, role: admin.role, permissions:cmsPermissions({cmsAdmin:admin},store), mustChangePassword: Boolean(admin.mustChangePassword) }, sessionExpiresAt: session.session?.expiresAt || null, sessionMaxAgeHours: authSecurityPolicy.sessionHours });
 });
 
 app.post('/api/cms/auth/change-password', requireSession, requireCsrf, async (req, res) => {
@@ -680,12 +688,13 @@ app.post('/api/cms/auth/change-password', requireSession, requireCsrf, async (re
   }
 });
 
-app.get('/api/cms/summary', requireAuth, (_req, res) => {
-  const draftCount = Object.keys(store.draftOverrides).length;
+app.get('/api/cms/summary', requireAuth, async (_req, res) => {
+  await contactRepository.list();
+  const draftCount = pendingFieldIds(store).length;
   const publishedCount = Object.keys(store.publishedOverrides).length;
   res.json({
     siteName: store.settings.siteName,
-    pages: inventory.pages.length,
+    pages: editablePages(inventory).length,
     fields: inventory.fields.length,
     draftFields: draftCount,
     publishedFields: publishedCount,
@@ -718,9 +727,10 @@ app.put('/api/cms/settings', requireAuth, requireOwner, requireCsrf, (req, res) 
 });
 
 app.get('/api/cms/pages', requireAuth, (_req, res) => {
-  const pages = inventory.pages.map((page) => {
+  const pages = editablePages(inventory).map((page) => {
     const pageFields = inventory.fields.filter((field) => field.page === page.page);
-    const draft = pageFields.filter((field) => Object.prototype.hasOwnProperty.call(store.draftOverrides, field.id)).length;
+    const pending = new Set(pendingFieldIds(store));
+    const draft = pageFields.filter((field) => pending.has(field.id)).length;
     const published = pageFields.filter((field) => Object.prototype.hasOwnProperty.call(store.publishedOverrides, field.id)).length;
     return { ...page, category: pageCategory(page.page), draftFields: draft, publishedFields: published };
   });
@@ -762,7 +772,19 @@ app.get('/api/cms/public', (req, res) => {
       const value = normalizePublicBrandCopy(overrides[field.id]);
       map[field.id] = field.attribute === 'html' ? sanitizeMarkup(value) : sanitizeAttribute(field.attribute, value);
     }
-    res.set('Cache-Control', 'no-store').json({ page, preview, overrides: map, settings: publicSettings() });
+    const renderedOverrides = {}, bindings = {};
+    const file = fileForRoute(page);
+    if (file) {
+      const { $, fields } = inventoryHtml(fs.readFileSync(file,'utf8'), page);
+      for (const field of fields) if (Object.hasOwn(overrides,field.id)) applyField($,field,normalizePublicBrandCopy(overrides[field.id]));
+      for (const field of fields) if (Object.hasOwn(overrides,field.id)) {
+        const target = $(field.selector).first(); if (!target.length) continue;
+        const html = ['html','text'].includes(field.attribute);
+        renderedOverrides[field.id] = html ? sanitizeMarkup(target.html()) : target.attr(field.attribute) ?? '';
+        bindings[field.id] = { selector: field.selector, attribute: html ? 'html' : field.attribute };
+      }
+    }
+    res.set('Cache-Control', 'no-store').json({ page, preview, overrides: map, renderedOverrides, bindings, settings: publicSettings() });
   }).catch(() => res.status(500).json({ error: 'AUTH_STATE_ERROR' }));
 });
 
@@ -780,7 +802,7 @@ app.post('/api/cms/fields/:id', requireAuth, requireEditor, requireCsrf, (req, r
 });
 
 app.post('/api/cms/publish', requireAuth, requireEditor, requireCsrf, (req, res) => {
-  const changed = Object.keys(store.draftOverrides).length;
+  const changed = pendingFieldIds(store).length;
   store.publishedOverrides = { ...store.draftOverrides };
   store.revisions.unshift({
     id: crypto.randomUUID(),
@@ -1133,20 +1155,24 @@ app.get('/api/cms/presentations/:id/file/:kind', requireAuth, async (req, res, n
 registerSocialRoutes(app, { store, writeStore, requireAuth, requireEditor, requireCsrf, receivePresentationInputs, audit });
 registerDocumentRoutes(app, { store, writeStore, requireAuth, requireEditor, requireCsrf, audit });
 
-app.get('/api/cms/submissions', requireAuth, (req, res) => {
+app.get('/api/cms/submissions', requireAuth, async (req, res) => {
+  await contactRepository.list();
   const status = String(req.query.status || '').trim();
   const submissions = store.submissions.filter((item) => !status || item.status === status).map(({ userAgent, ...item }) => item);
   res.json({ submissions, counts: store.submissions.reduce((map, item) => { map[item.status] = (map[item.status] || 0) + 1; return map; }, {}) });
 });
 
-app.patch('/api/cms/submissions/:id', requireAuth, requireEditor, requireCsrf, (req, res) => {
-  const item = store.submissions.find((candidate) => candidate.id === req.params.id);
-  if (!item) return res.status(404).json({ error: 'SUBMISSION_NOT_FOUND' });
+app.patch('/api/cms/submissions/:id', requireAuth, requireEditor, requireCsrf, async (req, res) => {
+  const existing = await contactRepository.get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'SUBMISSION_NOT_FOUND' });
+  const item = {...existing};
   if (Object.prototype.hasOwnProperty.call(req.body || {}, 'status') && ['new', 'in_progress', 'resolved', 'archived'].includes(req.body.status)) item.status = req.body.status;
   if (Object.prototype.hasOwnProperty.call(req.body || {}, 'notes')) item.notes = String(req.body.notes || '').slice(0, 2000);
   item.updatedAt = now();
+  await contactRepository.save(item);
+  store.submissions = [item, ...store.submissions.filter(candidate=>candidate.id!==item.id)];
   audit('submission.update', req.cmsUser, { submissionId: item.id, status: item.status });
-  writeStore();
+  await writeStore();
   res.json({ ok: true, submission: item });
 });
 
@@ -1161,6 +1187,7 @@ function userPayload(user) {
     name: user.name,
     email: user.email,
     role: cmsRoleForUser(user),
+    permissions: cmsPermissions({cmsAdmin},store),
     authRole: user.role || 'user',
     provider: 'password',
     mustChangePassword: Boolean(cmsAdmin?.mustChangePassword),

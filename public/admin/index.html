@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex,nofollow" />
     <title>CMS · Expresión Jurídica</title>
-    <link rel="stylesheet" href="/admin/admin.css?v=20261102-ej-brand" />
+    <link rel="stylesheet" href="/admin/admin.css?v=20261102-ej-brand" /><link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/social.css?v=20261102-studio" />
     <link rel="stylesheet" href="/admin/documents.css?v=20261102-contact" />
     <link rel="stylesheet" href="/admin/seo-audit.css?v=20261103" />
+    <link rel="stylesheet" href="/admin/content-editor.css?v=20261103-editable3" />
   </head>
   <body>
     <div id="app" class="app-shell" data-state="booting">
@@ -47,7 +48,7 @@
       <aside id="sidebar" class="sidebar" hidden>
         <div class="brand-lockup">
           <div class="brand-mark" aria-hidden="true">EJ</div>
-          <div><strong>Expresión Jurídica</strong><span>Content system</span></div>
+          <div><strong>Expresión Jurídica</strong><span>Panel de contenido</span></div>
         </div>
         <nav class="nav-stack" aria-label="Navegación del CMS">
           <button class="nav-item is-active" data-view="home"><span class="nav-glyph">⌂</span>Inicio</button>
@@ -59,7 +60,6 @@
           <button class="nav-item" data-view="posts"><span class="nav-glyph">▧</span>Posts y carruseles IA</button>
           <button class="nav-item" data-view="documents"><span class="nav-glyph">▤</span>Documentos con membrete</button>
           <button class="nav-item" data-view="media"><span class="nav-glyph">▧</span>App Storage</button>
-          <button class="nav-item" data-view="revisions"><span class="nav-glyph">◷</span>Versiones</button>
           <span class="nav-section-title"><span>Registros recibidos</span><b>⌄</b></span>
           <button class="nav-item" data-view="submissions"><span class="nav-glyph">✉</span>Solicitudes <span id="submission-badge" class="nav-badge" hidden>0</span></button>
           <button class="nav-item" data-view="activity"><span class="nav-glyph">▱</span>Actividad</button>
@@ -69,7 +69,7 @@
         </nav>
         <div class="sidebar-note">
           <span class="status-dot"></span>
-          <div><strong>Puente público activo</strong><small>Los valores publicados se renderizan desde el CMS.</small></div>
+          <div><strong>Sitio conectado</strong><small>Los cambios aceptados se guardan en el sitio.</small></div>
         </div>
         <button id="logout-button" class="nav-item nav-logout"><span class="nav-glyph">↪</span>Cerrar sesión</button>
       </aside>
@@ -79,28 +79,28 @@
           <div class="topbar-context"><span id="view-kicker">CMS</span><strong id="view-title">Resumen</strong></div>
           <div class="topbar-actions">
             <a class="text-action" href="/" target="_blank" rel="noopener">Abrir sitio ↗</a>
-            <button id="publish-button" class="button button-primary" type="button">Publicar cambios <span id="draft-count" class="button-count">0</span></button>
+            <button id="publish-button" hidden class="button button-primary" type="button">Publicar cambios <span id="draft-count" class="button-count">0</span></button>
           </div>
         </header>
 
         <section id="home-view" class="content-view">
-          <div class="home-intro"><div><p class="eyebrow">Editor de portada · estilo WordPress</p><h1>Inicio</h1><p>Administra la portada completa por secciones. Cada texto, enlace, imagen, video, SEO y bloque visible se guarda como borrador y se publica desde aquí.</p></div><div class="home-intro-actions"><a class="button button-secondary" href="/?cms_preview=1" target="_blank" rel="noopener">Vista previa ↗</a><button id="home-publish" class="button button-primary" type="button">Publicar cambios <span id="home-draft-count" class="button-count">0</span></button></div></div>
+          <div class="home-intro"><div><p class="eyebrow">Contenido de la página principal</p><h1>Inicio</h1><p>Elige una sección, cambia el texto y confirma lo que quieres guardar.</p></div><div class="home-intro-actions"><a class="button button-secondary" href="/?cms_preview=1" target="_blank" rel="noopener">Vista previa ↗</a><button id="home-publish" hidden class="button button-primary" type="button">Publicar cambios <span id="home-draft-count" class="button-count">0</span></button></div></div>
           <div class="home-summary"><div class="home-summary-card"><span>Portada conectada</span><strong>／</strong><small>Ruta principal del sitio</small></div><div class="home-summary-card"><span>Campos editables</span><strong id="home-field-count">0</strong><small>Texto, medios, links y SEO</small></div><div class="home-summary-card"><span>Estado editorial</span><strong>CMS</strong><small>Publicación con historial</small></div></div>
           <div class="home-tools panel"><div class="storage-search"><span>⌕</span><input id="home-search" placeholder="Buscar en la portada…" /></div><select id="home-kind" aria-label="Filtrar campos de portada"><option value="">Todas las categorías</option><option value="html">Contenido</option><option value="link">Enlaces</option><option value="image">Imágenes</option><option value="video">Video</option><option value="meta">SEO</option></select><button id="home-refresh" class="button button-secondary" type="button">Actualizar campos</button></div>
           <div id="home-field-list" class="home-field-list"></div>
         </section>
 
         <section id="dashboard-view" class="content-view">
-          <div class="page-intro"><div><p class="eyebrow">Centro de control editorial</p><h1>Todo el sitio, en un solo lugar.</h1><p>Explora cada página del export estático y edita sus campos desde una capa de contenido persistente.</p></div><div class="intro-mark">EJ<span>CMS</span></div></div>
+          <div class="page-intro"><div><p class="eyebrow">Centro de control editorial</p><h1>Todo el sitio, en un solo lugar.</h1><p>Consulta las páginas del sitio, los mensajes recibidos y los accesos.</p></div><div class="intro-mark">EJ<span>CMS</span></div></div>
           <div id="summary-grid" class="metric-grid" aria-live="polite"></div>
           <div class="dashboard-grid">
-            <section class="panel panel-wide"><div class="panel-heading"><div><p class="eyebrow">Mapa editorial</p><h2>Superficie pública</h2></div><button class="text-action" data-view="pages">Ver páginas →</button></div><div id="page-overview" class="page-overview"></div></section>
+            <section class="panel panel-wide"><div class="panel-heading"><div><p class="eyebrow">Páginas del sitio</p><h2>Contenido disponible</h2></div><button class="text-action" data-view="pages">Ver páginas →</button></div><div id="page-overview" class="page-overview"></div></section>
             <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Última actividad</p><h2>Registro</h2></div><button class="text-action" data-view="activity">Ver todo →</button></div><div id="activity-overview" class="activity-list"></div></section>
           </div>
         </section>
 
         <section id="pages-view" class="content-view" hidden>
-          <div class="view-heading"><div><p class="eyebrow">Contenido conectado</p><h1>Páginas</h1><p>Cada texto, enlace, imagen, video, alt y metadato tiene una ficha editable.</p></div><button id="refresh-inventory" class="button button-secondary">Actualizar inventario</button></div>
+          <div class="view-heading"><div><p class="eyebrow">Contenido conectado</p><h1>Páginas</h1><p>Elige la página y la sección que quieres modificar. Los textos se editan tal como los lees.</p></div><button id="refresh-inventory" class="button button-secondary" hidden>Actualizar inventario</button></div>
           <div class="page-layout"><aside id="page-list" class="page-list panel"></aside><section id="editor-panel" class="panel editor-panel"><div class="empty-state"><strong>Selecciona una página</strong><span>Elige una ruta para abrir su inventario completo.</span></div></section></div>
         </section>
 
@@ -213,13 +213,8 @@
           <div class="storage-layout"><aside id="media-folders" class="folder-rail panel"></aside><div id="media-grid" class="media-grid"></div></div>
         </section>
 
-        <section id="revisions-view" class="content-view" hidden>
-          <div class="view-heading"><div><p class="eyebrow">Historial editorial</p><h1>Versiones publicadas</h1><p>Cada publicación conserva el snapshot completo para restaurar una versión anterior sin tocar el sitio a mano.</p></div></div>
-          <div id="revisions-list" class="stack-list"></div>
-        </section>
-
         <section id="activity-view" class="content-view" hidden>
-          <div class="view-heading"><div><p class="eyebrow">Trazabilidad</p><h1>Actividad del CMS</h1><p>Acciones de acceso, edición, medios, inventario y publicación.</p></div></div>
+          <div class="view-heading"><div><p class="eyebrow">Trazabilidad</p><h1>Actividad del CMS</h1><p>Aquí ves quién inició sesión, cuándo salió y qué cambios hizo.</p></div></div>
           <div id="activity-list" class="stack-list"></div>
         </section>
 
@@ -231,22 +226,75 @@
         <section id="settings-view" class="content-view" hidden>
           <div class="view-heading"><div><p class="eyebrow">Configuración global</p><h1>Ajustes del sitio</h1><p>Privacidad, cookies, analítica, SEO, GEO, Search Console y navegación se publican desde este panel.</p></div><button id="save-settings" class="button button-primary" type="button">Guardar ajustes</button></div>
           <form id="settings-form" class="settings-grid">
-            <section class="panel settings-panel"><div class="panel-heading"><div><p class="eyebrow">Identidad</p><h2>General</h2></div></div><div class="settings-fields"><label>Nombre del sitio<input id="setting-site-name" name="siteName" required /></label><label>Descripción SEO<textarea id="setting-site-description" name="siteDescription" rows="3"></textarea></label><label>URL canónica<input id="setting-canonical" name="canonicalBaseUrl" type="url" placeholder="https://tudominio.com" /></label><label class="check-row"><input id="setting-indexing" name="indexingEnabled" type="checkbox" /> Permitir indexación en buscadores</label></div></section>
+            <section class="panel settings-panel"><div class="panel-heading"><div><p class="eyebrow">Identidad</p><h2>General</h2></div></div><div class="settings-fields"><label>Nombre del sitio<input id="setting-site-name" name="siteName" required /></label><label>Descripción SEO<textarea id="setting-site-description" name="siteDescription" rows="3"></textarea></label><label>URL canónica<input id="setting-canonical" name="canonicalBaseUrl" type="url" placeholder="https://tu-dominio.com" /><small class="settings-help">Usa la dirección pública definitiva del sitio. Todas las páginas la usarán para canonical, Open Graph y sitemap.</small></label><label class="check-row"><input id="setting-indexing" name="indexingEnabled" type="checkbox" /><span>Permitir indexación en buscadores<br /><small class="settings-help">Actívalo cuando la URL canónica ya sea la definitiva.</small></span></label></div></section>
             <section class="panel settings-panel"><div class="panel-heading"><div><p class="eyebrow">SEO técnico</p><h2>Google</h2></div></div><div class="settings-fields"><label>Verificación de Search Console<input id="setting-search-console" name="searchConsoleVerification" placeholder="token de Google" /></label><p class="settings-help">Pega sólo el contenido del atributo de verificación. El CMS lo inserta en todas las páginas.</p><label class="check-row"><input id="setting-analytics-enabled" type="checkbox" /> Activar Google Analytics después del consentimiento</label><label>ID de medición<input id="setting-measurement" name="measurementId" placeholder="G-XXXXXXXXXX" /></label></div></section>
             <section class="panel settings-panel"><div class="panel-heading"><div><p class="eyebrow">Privacidad</p><h2>Aviso único</h2></div></div><div class="settings-fields"><label>Título<input id="setting-cookie-title" /></label><label>Texto del aviso<textarea id="setting-cookie-text" rows="4"></textarea></label><div class="settings-two"><label>Versión<input id="setting-cookie-version" /></label><label>Enlace de privacidad<input id="setting-cookie-privacy" placeholder="/aviso-de-privacidad/" /></label></div><label>Enlace de cookies<input id="setting-cookie-policy" placeholder="/politica-de-cookies/" /></label><div class="settings-two"><label>Botón aceptar<input id="setting-cookie-accept" /></label><label>Botón rechazar<input id="setting-cookie-reject" /></label></div></div></section>
-            <section class="panel settings-panel"><div class="panel-heading"><div><p class="eyebrow">GEO / datos estructurados</p><h2>Ubicación y contacto</h2></div></div><div class="settings-fields"><label>Nombre comercial<input id="setting-geo-name" /></label><div class="settings-two"><label>Correo<input id="setting-geo-email" type="email" /></label><label>Teléfono<input id="setting-geo-phone" /></label></div><label>Domicilio<input id="setting-geo-street" /></label><div class="settings-three"><label>Ciudad<input id="setting-geo-locality" /></label><label>Estado<input id="setting-geo-region" /></label><label>País<input id="setting-geo-country" /></label></div><div class="settings-two"><label>Latitud<input id="setting-geo-lat" /></label><label>Longitud<input id="setting-geo-lng" /></label></div></div></section>
+            <section class="panel settings-panel"><div class="panel-heading"><div><p class="eyebrow">GEO / datos estructurados</p><h2>Ubicación y contacto</h2><p class="settings-help">Estos datos alimentan el marcado para buscadores y asistentes: nombre comercial, zona de atención y contacto público.</p></div></div><div class="settings-fields"><label>Nombre comercial<input id="setting-geo-name" /></label><div class="settings-two"><label>Correo<input id="setting-geo-email" type="email" /></label><label>Teléfono<input id="setting-geo-phone" /></label></div><label>Domicilio<input id="setting-geo-street" /></label><div class="settings-three"><label>Ciudad<input id="setting-geo-locality" /></label><label>Estado<input id="setting-geo-region" /></label><label>País<input id="setting-geo-country" /></label></div><div class="settings-two"><label>Latitud<input id="setting-geo-lat" /></label><label>Longitud<input id="setting-geo-lng" /></label></div></div></section>
             <section class="panel settings-panel settings-wide"><div class="panel-heading"><div><p class="eyebrow">Menú y enlaces</p><h2>Visibilidad del menú</h2></div></div><div class="settings-fields"><p class="settings-help">Cada regla usa la clave del enlace. Ejemplos: <code>href:/analisis/</code> o <code>text:casos</code>. Escribe una clave por línea para ocultarla; quita la línea para mostrarla.</p><textarea id="setting-navigation-hidden" rows="6" placeholder="href:/analisis/\ntext:casos"></textarea></div></section>
           </form>
         </section>
 
         <section id="users-view" class="content-view" hidden>
-          <div class="view-heading"><div><p class="eyebrow">Control de acceso</p><h1>Usuarios y roles</h1><p>Crea cuentas, asigna permisos editoriales y revoca accesos sin compartir contraseñas.</p></div></div>
-          <div class="users-layout"><form id="user-form" class="panel user-form"><div class="panel-heading"><div><p class="eyebrow">Nueva cuenta</p><h2>Crear usuario</h2></div></div><div class="settings-fields"><label>Nombre<input id="user-name" required /></label><label>Correo electrónico<input id="user-email" type="email" required /></label><label>Rol<select id="user-role"><option value="editor">Editor · puede publicar</option><option value="viewer">Visualizador · sólo lectura</option><option value="owner">Propietario · control total</option></select></label><button class="button button-primary" type="submit">Generar acceso</button><div id="temporary-credentials" class="temporary-credentials" hidden><strong>Contraseña temporal</strong><p>Entrégala al usuario de forma segura. Sólo se muestra después de crear la cuenta.</p><div class="temporary-password-line"><code id="temporary-password"></code><button id="copy-temporary-password" class="mini-button" type="button">Copiar</button></div><small>Usuario: <span id="temporary-user-email"></span></small></div></div></form><section class="panel users-panel"><div class="panel-heading"><div><p class="eyebrow">Cuentas autorizadas</p><h2>Acceso actual</h2></div><button id="refresh-users" class="text-action" type="button">Actualizar</button></div><div id="users-list" class="users-list"></div></section></div>
-        </section>
-      </main>
+  <div class="view-heading users-heading">
+    <div>
+      <p class="eyebrow">Control de acceso</p>
+      <h1>Usuarios y roles</h1>
+      <p>Administra quién entra al CMS, qué puede hacer y cómo recuperar su acceso.</p>
+    </div>
+    <div class="security-note"><span class="security-dot" aria-hidden="true"></span><span>Seguridad activa: acceso por correo y contraseña</span></div>
+  </div>
+
+  <div class="users-summary-grid" aria-label="Resumen de accesos">
+    <article class="user-metric"><span>Usuarios activos</span><strong id="users-count">0</strong><small>Cuentas con acceso al CMS</small></article>
+    <article class="user-metric"><span>Propietarios activos</span><strong id="users-owner-count">0</strong><small>Personas con control total</small></article>
+    <article class="user-metric"><span>Cambios pendientes</span><strong id="users-pending-count">0</strong><small>Usuarios que deben crear su contraseña</small></article>
+  </div>
+
+  <div class="users-layout">
+    <section class="panel user-security-panel">
+      <div class="panel-heading"><div><span class="panel-index">01</span><p class="eyebrow">Mi seguridad</p><h2>Mi contraseña</h2><p>Actualiza tu contraseña cuando quieras. Usa al menos 8 caracteres.</p></div></div>
+      <form id="account-password-form" class="settings-fields">
+        <label>Contraseña actual<input id="account-password-current" type="password" autocomplete="current-password" minlength="8" required /></label>
+        <label>Nueva contraseña<input id="account-password-new" type="password" autocomplete="new-password" minlength="8" required placeholder="Mínimo 8 caracteres" /></label>
+        <label>Repite la nueva contraseña<input id="account-password-confirm" type="password" autocomplete="new-password" minlength="8" required /></label>
+        <button class="button button-primary" type="submit">Actualizar mi contraseña</button>
+        <p id="account-password-error" class="form-error" role="alert" hidden></p>
+      </form>
+    </section>
+
+    <form id="user-form" class="panel user-create-panel">
+      <div class="panel-heading"><div><span class="panel-index">02</span><p class="eyebrow">Nueva cuenta</p><h2>Dar acceso al CMS</h2><p>El sistema genera una contraseña temporal y pide cambiarla en el primer ingreso.</p></div></div>
+      <div class="settings-fields">
+        <label>Nombre<input id="user-name" required placeholder="Nombre de la persona" /></label>
+        <label>Correo electrónico<input id="user-email" type="email" required placeholder="persona@dominio.com" /></label>
+        <label>Rol<select id="user-role"><option value="editor">Editor · puede publicar</option><option value="owner">Propietario · control total</option><option value="viewer">Visualizador · solo lectura</option></select></label>
+        <div class="role-inline-help"><strong>Elige el alcance correcto</strong><span>Editor puede actualizar contenido. Visualizador sólo consulta. Propietario administra también usuarios y permisos.</span></div>
+        <button class="button button-primary" type="submit">Generar acceso</button>
+        <div id="temporary-credentials" class="temporary-credentials" hidden>
+          <strong>Acceso generado</strong>
+          <p>Comparte la contraseña temporal de forma segura. Sólo se muestra en este momento.</p>
+          <div class="temporary-secret"><code id="temporary-password"></code><button id="copy-temporary-password" class="mini-button" type="button">Copiar</button></div>
+          <small>Correo: <span id="temporary-user-email"></span></small>
+        </div>
+      </div>
+    </form>
+
+    <section class="panel accounts-panel">
+      <div class="panel-heading"><div><span class="panel-index">03</span><p class="eyebrow">Personas con acceso</p><h2>Cuentas autorizadas</h2><p>Revisa el estado de cada cuenta, cambia su rol o genera una nueva contraseña temporal.</p></div><button id="refresh-users" class="text-action" type="button">Actualizar</button></div>
+      <div id="users-list" class="users-list"></div>
+    </section>
+
+    <section id="roles-panel" class="panel roles-panel" hidden>
+      <div class="panel-heading"><div><span class="panel-index">04</span><p class="eyebrow">Permisos</p><h2>Qué puede hacer cada rol</h2><p>Personaliza el alcance de Editores y Visualizadores. El Propietario conserva el control total.</p></div><button id="save-role-permissions" class="button button-primary" type="button">Guardar permisos</button></div>
+      <div id="role-permissions" class="role-permissions-grid"></div>
+      <div class="settings-help" style="padding:0 22px 24px">Los cambios se aplican a las cuentas del rol cuando vuelvan a entrar al CMS.</div>
+    </section>
+  </div>
+</section>
+</main>
     </div>
     <div id="toast-region" class="toast-region" aria-live="polite"></div>
-    <script type="module" src="/admin/app.js?v=20261102-studio3"></script>
+    <script type="module" src="/admin/app.js?v=20261103-editable3"></script>
     <script src="/admin/seo-audit.js?v=20261103b" defer></script>
   </body>
 </html>

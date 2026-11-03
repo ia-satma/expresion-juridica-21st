@@ -29,7 +29,7 @@ try {
   assert(online, 'Isolated server must start; raw logs intentionally withheld');
   const anonymous = await (await fetch(base + '/api/cms/auth-state')).json();
   assert.equal(anonymous.authenticated, false); assert(!anonymous.user); assert(!anonymous.csrf);
-  for (const route of ['users', 'activity', 'settings', 'media', 'presentations', 'posts', 'documents', 'seo-audit']) {
+  for (const route of ['users', 'activity', 'settings', 'media', 'presentations', 'posts', 'documents', 'seo-audit', 'content', 'submissions']) {
     const response = await fetch(base + '/api/cms/' + route);
     assert.equal(response.status, 401, `Authentication required for ${route}`);
     assert.match(response.headers.get('cache-control'), /no-store/);
@@ -56,11 +56,26 @@ try {
   assert.equal(saved.status, 200, 'Authenticated settings save must pass the deployment security controls');
   const withoutCsrf = await fetch(base + '/api/cms/settings', { method: 'PUT', headers: { cookie: cookieHeader(), origin: base, 'content-type': 'application/json' }, body: '{}' });
   assert.equal(withoutCsrf.status, 403);
+  const request = async (url, options = {}) => { const response=await fetch(base+url,{...options,headers:{cookie:cookieHeader(),origin:base,'content-type':'application/json',...(options.method?{'x-cms-csrf':decodeURIComponent(cookies.get('cms_csrf')||state.csrf)}:{}),...options.headers}});collect(response);return response; };
+  const catalog=await (await request('/api/cms/content?page=%2Fareas%2Fadministrativo%2F')).json();
+  const heading=catalog.fields.find(field=>field.label==='Título principal');assert(heading&&!heading.value.includes('<'));
+  const editedText='Asesoría administrativa de prueba en México.';
+  const contentSave=await request('/api/cms/content',{method:'POST',body:JSON.stringify({changes:[{id:heading.id,value:editedText}],confirmed:true})});assert.equal(contentSave.status,200);
+  const preview=await (await request('/areas/administrativo/?cms_preview=1')).text();assert(preview.includes(editedText),'Authenticated preview includes the saved text');
+  const beforePublish=await (await fetch(base+'/areas/administrativo/')).text();assert(beforePublish.includes(editedText),'Accept and save must be public without a separate publish step');
+  const publicDraft=await (await request('/api/cms/public?path=%2Fareas%2Fadministrativo%2F&preview=1')).json();assert(publicDraft.bindings[heading.id]);assert(publicDraft.renderedOverrides[heading.id].includes('Asesoría'));
+  // Confirmed content saves publish only the approved edits in the same transaction.
+  assert.equal((await (await request('/api/cms/summary')).json()).draftFields,0);
+  assert((await (await fetch(base+'/areas/administrativo/')).text()).includes(editedText));
+  const contact={nombre:'Persona sintética de formulario',correo:'contact-fixture@invalid.test',materia:'Administrativo',mensaje:'Solicitud ficticia para comprobar que se conserva en el CMS.',privacidad:true,requestKey:crypto.randomUUID()};
+  const sent=await request('/api/public/contact',{method:'POST',body:JSON.stringify(contact)});assert.equal(sent.status,201);const receipt=await sent.json();
+  const submissions=await (await request('/api/cms/submissions')).json();assert(submissions.submissions.some(item=>item.id===receipt.id&&item.message===contact.mensaje));
+  const storedContact=JSON.parse(await fs.readFile(path.join(temporary,'data','isolated-security-check','studio-state','submissions',receipt.id+'.json'),'utf8'));assert.equal(storedContact.message,contact.mensaje,'The CMS copy must also exist in persistent scoped storage');
   const secondRegistration = await fetch(base + '/api/auth/sign-up/email', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ email: 'second-fixture@invalid.test', password, name: 'Unused fixture' }) });
   assert.equal(secondRegistration.status, 403);
   await new Promise(resolve => setTimeout(resolve, 50));
-  assert(!logs.includes(email) && !logs.includes(password) && !logs.includes(changedPassword) && !logs.includes(authSecret), 'Runtime logs must not contain fixture credentials or identity');
-  console.log(JSON.stringify({ passed: true, isolatedAuthDatabase: true, anonymousIdentityHidden: true, privateRoutes: 8, registrationClosesAfterOwner: true, secureHttpOnlySession: true, secureCsrfCookie: true, firstLoginChangeRequired, authenticatedSettingsSave: true, csrfEnforced: true, privateRuntimeLogs: true }));
+  assert(!logs.includes(email) && !logs.includes(password) && !logs.includes(changedPassword) && !logs.includes(authSecret)&&!logs.includes(contact.correo)&&!logs.includes(contact.nombre)&&!logs.includes(contact.mensaje), 'Runtime logs must not contain fixture credentials, identity or form content');
+  console.log(JSON.stringify({ passed: true, isolatedAuthDatabase: true, anonymousIdentityHidden: true, privateRoutes: 10, registrationClosesAfterOwner: true, secureHttpOnlySession: true, secureCsrfCookie: true, firstLoginChangeRequired, authenticatedSettingsSave: true, authenticatedContentSave:true,confirmedContentImmediatelyPublic:true,contactCopyInPrivateCms:true,contactCopyPersisted:true,csrfEnforced: true, privateRuntimeLogs: true }));
 } finally {
   child.kill('SIGTERM');
   if (child.exitCode === null) await new Promise(resolve => child.once('exit', resolve));
