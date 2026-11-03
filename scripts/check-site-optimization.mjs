@@ -9,6 +9,12 @@ import { buildInventory, fileForRoute, routeFromFile } from '../server/inventory
 import { enablePublicDiscovery, publicSiteCompression, registerSiteOptimizationRoutes, enhanceSiteDocument, indexablePages } from '../server/site-optimization.mjs';
 
 const root = process.cwd(), inventory = buildInventory();
+const adminApp = await fs.readFile(path.join(root, 'public/admin/app.js'), 'utf8');
+const adminMarkup = load(await fs.readFile(path.join(root, 'public/admin/index.html'), 'utf8'));
+const settingsIds = new Set([...adminApp.matchAll(/['"](setting-[a-z0-9-]+)['"]/g)].map(match => match[1]));
+for (const id of settingsIds) assert.equal(adminMarkup(`[id="${id}"]`).length, 1, `Settings binding missing or duplicated: ${id}`);
+assert.equal(adminMarkup('#setting-indexing').attr('type'), 'checkbox');
+assert.equal(adminMarkup('#setting-indexing').attr('name'), 'indexingEnabled');
 const store = { settings: { siteName: 'Expresión Jurídica Consultores', siteDescription: 'Asesoría y defensa jurídica especializada para personas, empresas e instituciones.', canonicalBaseUrl: 'https://expresion-juridica-21-st.replit.app', defaultLocale: 'es-MX', indexingEnabled: false, geo: { businessName: 'Expresión Jurídica Consultores', email: 'consultoria@expresionjuridica.com', street: 'Boulevard Europa No. 33, Fracc. Montemagno', locality: 'Xalapa', region: 'Veracruz', country: 'MX' } } };
 let writes = 0;
 assert(enablePublicDiscovery(store, () => writes++)); assert.equal(writes, 1);
@@ -82,6 +88,6 @@ try {
   store.settings.indexingEnabled = false;
   assert.match(await (await fetch(base + '/robots.txt')).text(), /Disallow: \/\n/); assert(!(await (await fetch(base + '/sitemap.xml')).text()).includes('<url>'));
   store.settings.indexingEnabled = true;
-  console.log(JSON.stringify({ passed: true, reviewedPages: inventory.pages.length, canonicalPages: status.indexablePages, bodyBytes: plain.bytes.length, brotliBytes: br.bytes.length, gzipBytes: gzip.bytes.length, ownerIndexingOptOutPreserved: true, privateRoutesProtected: true, videoRangePreserved: true }));
+  console.log(JSON.stringify({ passed: true, reviewedPages: inventory.pages.length, canonicalPages: status.indexablePages, settingsBindings: settingsIds.size, bodyBytes: plain.bytes.length, brotliBytes: br.bytes.length, gzipBytes: gzip.bytes.length, ownerIndexingOptOutPreserved: true, privateRoutesProtected: true, videoRangePreserved: true }));
   if (process.env.EJ_SEO_PREVIEW === '1') console.log(`PREVIEW ${base}/ and ${base}/__qa/settings`);
 } finally { if (process.env.EJ_SEO_PREVIEW !== '1') server.close(); }

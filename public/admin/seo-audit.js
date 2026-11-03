@@ -1,6 +1,12 @@
 (() => {
   const view = document.getElementById('settings-view');
   if (!view) return;
+  // Older CMS markup used a different ID from the settings reader and writer.
+  const indexing = document.getElementById('setting-indexing-enabled');
+  if (indexing && !document.getElementById('setting-indexing')) {
+    indexing.id = 'setting-indexing';
+    indexing.name = 'indexingEnabled';
+  }
   const panel = document.createElement('section');
   panel.className = 'panel seo-audit-panel';
   panel.innerHTML = '<div class="panel-heading"><div><p class="eyebrow">Comprobación del sitio</p><h2>Estado de SEO y GEO</h2><p class="settings-help">Revisa la configuración que está utilizando el sitio publicado.</p></div><button type="button" class="button button-secondary" data-seo-refresh>Comprobar ahora</button></div><div class="seo-audit-content"><p role="status" data-seo-status>Abre este apartado para comprobar el estado.</p><dl class="seo-audit-results"></dl><div class="seo-audit-links"></div><p class="settings-help">La indexación y las apariciones en buscadores y respuestas de IA dependen de cada proveedor. Después de guardar ajustes, comprueba de nuevo su estado.</p></div>';
