@@ -31,7 +31,7 @@ Write distinct captions for each selected network. LinkedIn benefits from profes
 
 Default to a contemporary Mexican setting unless the user's text specifies a different country or place. People may appear when relevant. Prefer documentary photography: credible everyday settings, natural light, candid activity, realistic faces, skin, clothing, architecture and proportions. Avoid stereotypes, theatrical stock-photo poses and decorative fantasy unless the user asks for them. A generated image illustrates the subject; it is not archival evidence of a specific real event.
 
-Derive each image brief from the actual content and any explicit geographic instruction. Keep the logo and all lettering out of the generated bitmap: the application adds them as editable elements. Each AI-generated image in a presentation must have the visible caption “Imagen generada con IA” directly below it. User-supplied photographs must not be falsely labeled as AI-generated.
+Derive each image brief from the actual content and any explicit geographic instruction. Keep the logo and all lettering out of the generated bitmap: the application adds them as editable elements. AI-generated images remain separate assets and are tracked internally; do not add a visible disclosure caption to the artwork. User-supplied photographs must not be falsely labeled as AI-generated.
 
 ## Editable output
 

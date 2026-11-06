@@ -143,7 +143,7 @@ try {
     const html = await response.text(); htmls.push(html); const $ = load(html);
     assert.equal($('script').length, 0); assert($('svg g[data-field="headline"] text').length);assert.equal($('[contenteditable="true"]').length,0); assert.match(html, /font\/ttf;base64/);
     assert.match($('[data-field="headline"]').text(), /claridad|consulta/);
-    assert.equal(html.includes('Imagen generada con IA'), index > 0);
+    assert(!html.includes('Imagen generada con IA'),'Social artwork must not include a visible AI disclosure caption');
   }
   const png = await (await fetch(base + result.files.png[0], { headers })).arrayBuffer();
   const individual=await fetch(base+result.files.png[1]+'&download=1',{headers});assert.match(individual.headers.get('content-type'),/image\/png/);assert.match(individual.headers.get('content-disposition'),/^attachment;/);assert.equal(individual.status,200);

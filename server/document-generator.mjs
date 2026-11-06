@@ -11,9 +11,10 @@ import { editorialSkill, EDITORIAL_SKILL_ID } from './editorial-skill.mjs';
 
 export const DOCUMENT_DIR = path.join(DATA_DIR, 'generated-documents');
 export const LETTERHEAD_DIR = path.join(process.cwd(), 'server/assets/ej-brand');
-export const DOCUMENT_LAYOUT_VERSION = '20261102-justify-contact';
-// The original Letter page has a full-height left panel and a contact header.
-export const DOCUMENT_PAGE = { width: 612, height: 792, left: 166, right: 32, top: 149, bottom: 58 };
+export const DOCUMENT_LAYOUT_VERSION = '20261106-letterhead-v2';
+// The current Letter page uses a full-height left panel and a contact footer.
+// Keep body text above the gold rule and footer contact block.
+export const DOCUMENT_PAGE = { width: 612, height: 792, left: 166, right: 32, top: 149, bottom: 148 };
 const clean = value => String(value ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
 const x = value => clean(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
 const xml = value => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>${value}`;

@@ -34,7 +34,7 @@ Los ocho controles estructurados son `palette`, `spacing`, `headlineScale`, `bac
 
 La dirección de arte pide una idea por pieza, jerarquía, espacio, relación intencional entre fotografía y tipografía y ritmo entre piezas. Las composiciones de fondo pueden usar una imagen a sangre y velos direccionales nativos. Se evita convertir cada pieza en un título con un rectángulo pequeño de foto. La generación respeta la cantidad solicitada, de una a veinte piezas, en lugar de añadir piezas para resolver exceso de texto. Se mantienen copy para seis redes, descarga PNG individual, HTML y paquete ZIP opcional.
 
-Las fotografías se plantean como ilustración editorial documental de México salvo indicación distinta en el material: personas y actividades creíbles, proporciones reales, luz y entorno plausibles. El prompt excluye letras, logos y marcas de agua; la aplicación añade la identidad y el pie visible **“Imagen generada con IA”**. Las imágenes conservan proporciones mediante recorte, no mediante estiramiento. Un encuadre automático no equivale a detección de rostros o del punto focal.
+Las fotografías se plantean como ilustración editorial documental de México salvo indicación distinta en el material: personas y actividades creíbles, proporciones reales, luz y entorno plausibles. El prompt excluye letras, logos, marcas de agua y leyendas; la aplicación añade la identidad como elementos independientes y registra internamente el origen de la imagen sin mostrar una leyenda en la pieza. Las imágenes conservan proporciones mediante recorte, no mediante estiramiento. Un encuadre automático no equivale a detección de rostros o del punto focal.
 
 ## Legibilidad y revisión visual
 

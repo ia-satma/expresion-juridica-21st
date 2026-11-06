@@ -65,7 +65,7 @@ async function outline({ topic, source, count, language, includeVisuals, webSear
 }
 async function generateSlideImage(data, slide) {
   const model = presentationModels().imageModel;
-  const prompt = `Documentary-style photograph illustrating a presentation by Expresión Jurídica Consultores. Presentation: ${clean(data.title, 150)}. Slide: ${slide.title}. Context: ${slide.body}. Photography direction and place: ${data.imageContext || 'Contemporary Mexico unless the text explicitly names another location.'}. Relevant people may appear in credible everyday or professional activities. Natural light, candid gestures, realistic skin, clothing, faces, architecture and proportions; grounded in real life. Use a contemporary Mexican setting unless the supplied direction specifies another place. Avoid stereotypes and theatrical stock-photo poses. This is an illustrative generated photograph, not archival evidence of a particular real event. No text, lettering, logos or watermarks within the photograph. The application adds the original logo and the visible caption Imagen generada con IA separately.`;
+  const prompt = `Documentary-style photograph illustrating a presentation by Expresión Jurídica Consultores. Presentation: ${clean(data.title, 150)}. Slide: ${slide.title}. Context: ${slide.body}. Photography direction and place: ${data.imageContext || 'Contemporary Mexico unless the text explicitly names another location.'}. Relevant people may appear in credible everyday or professional activities. Natural light, candid gestures, realistic skin, clothing, faces, architecture and proportions; grounded in real life. Use a contemporary Mexican setting unless the supplied direction specifies another location. Avoid stereotypes and theatrical stock-photo poses. This is an illustrative generated photograph, not archival evidence of a particular real event. No text, lettering, logos, watermarks or disclosure labels within the photograph. The application adds the original logo and keeps the image as a separate editable object.`;
   const result = await openaiRequest('/images/generations', { model, prompt, n: 1, size: '1536x1024', quality: 'medium', output_format: 'png' });
   if (!result.data?.[0]?.b64_json) throw new Error('OPENAI_IMAGE_EMPTY');
   return { buffer: await sharp(Buffer.from(result.data[0].b64_json, 'base64')).resize(1200, 800, { fit: 'cover' }).png().toBuffer(), model };
@@ -102,14 +102,14 @@ function textElement(text, x, y, w, h, size, color, font, metrics, extra = {}) {
   do { lines = wrap(text, w * .96, size, metrics[font]); if (lines.length * size * 1.25 <= h || size <= minimum) break; size -= 1; } while (true);
   return { type: 'text', text: lines.join('\n'), x, y, w, h, size, color, font, ...extra };
 }
-function sceneFor(slide, index, count, { assets, metrics, artwork, isAiArtwork, style, branding }) {
+function sceneFor(slide, index, count, { assets, metrics, artwork, style, branding }) {
   if (branding === 'minimal' && style === 'corporate') style = 'editorial';
   const cover = index === 0; const dark = style === 'dark' || (!cover && slide.kind === 'closing');
   const bg = dark ? B.navy : B.white; const fg = dark ? B.paper : B.navy;
   const nodes = [{ type: 'rect', x: 0, y: 0, w: 1600, h: 900, fill: bg }];
   const text = (value, x, y, w, h, size, color = fg, font = 'body', extra = {}) => nodes.push(textElement(value, x, y, w, h, size, color, font, metrics, extra));
   const logo = (x, y, w) => { if (branding === 'firm') nodes.push({ type: 'image', buffer: assets.logo, x, y, w, h: w * 442 / 480 }); };
-  const illustration = (x, y, w, h) => { nodes.push({ type: 'image', buffer: artwork, x, y, w, h }); if (isAiArtwork) text('Imagen generada con IA', x, y + h + 10, w, 32, 17, dark ? B.gray : B.navy); };
+  const illustration = (x, y, w, h) => { nodes.push({ type: 'image', buffer: artwork, x, y, w, h }); };
   if (cover && style === 'editorial') {
     nodes.push({ type: 'rect', x: 0, y: 0, w: 1600, h: 180, fill: B.navy });
     logo(1365, 28, 130);
@@ -244,7 +244,7 @@ export async function generatePresentation({ topic = '', sourceText = '', slideC
       for (const image of batch) { artworkBySlide.set(image.index, image.buffer); generated.push(image); }
     }
   }
-  const scenes = data.slides.map((slide, i) => sceneFor(slide, i, count, { assets, metrics, artwork: artworkBySlide.get(i), isAiArtwork: generated.some(image => image.index === i), style, branding }));
+  const scenes = data.slides.map((slide, i) => sceneFor(slide, i, count, { assets, metrics, artwork: artworkBySlide.get(i), style, branding }));
   const pngs = []; for (const [index,scene] of scenes.entries()){progress(`Componiendo diapositiva ${index+1} de ${scenes.length}`,index,scenes.length,'layout');pngs.push(await sharp(Buffer.from(svgFor(scene, metrics))).png().toBuffer());}
   const id = crypto.randomUUID(); const name = slug(data.title); const files = { pptx: null, pdf: null, images: [], artwork: null, imagesZip: null };
   const exportTotal=pngs.length+selectedFormats.length+(generated.length?1:0);let exported=0;

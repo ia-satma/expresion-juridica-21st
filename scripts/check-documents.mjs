@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import http from 'node:http';
+import { execFileSync } from 'node:child_process';
 import express from 'express';
 import JSZip from 'jszip';
 import { PDFDocument } from 'pdf-lib';
@@ -57,8 +58,12 @@ try {
   assert(paragraphProperties.filter(value => value.includes('w:pStyle w:val="Normal"')).every(value => value.includes('w:jc w:val="both"')));
   assert(paragraphProperties.filter(value => value.includes('w:pStyle w:val="Title"')).every(value => value.includes('w:jc w:val="left"')));
   assert.match(await zip.file('word/header1.xml').async('string'), /behindDoc="1"/); assert.match(await zip.file('word/fontTable.xml').async('string'), /embedItalic/);
+  assert.deepEqual(Buffer.from(await zip.file('word/media/letterhead.png').async('nodebuffer')), await fs.readFile(path.join(root, 'server/assets/ej-brand/letterhead.png')), 'DOCX must embed the current letterhead raster');
   const text = (await mammoth.extractRawText({ buffer: docxBytes })).value; for (const line of source.split('\n').filter(Boolean)) assert(text.includes(line), 'Preserve every supplied line'); assert(!text.includes('Lorem ipsum'));
   assert.equal((await PDFDocument.load(pdfBytes)).getPageCount(), result.pageCount);
+  const pdfText = execFileSync('pdftotext', ['-layout', path.join(output, 'letterhead.pdf'), '-'], { encoding: 'utf8' });
+  assert.equal((pdfText.match(/consultoria@expresionjuridica\.com/gi) || []).length, result.pageCount, 'New footer contact should appear once per page');
+  assert(!pdfText.includes('expresionjuridica@live.com'), 'Legacy contact must not appear in generated PDF');
   // Existing documents must also use the current format without modifying
   // their content or edit version, even when their saved exports are stale.
   const legacy = await readStudioState('documents', result.id), legacyVersion = legacy.updatedAt;
@@ -67,7 +72,9 @@ try {
   await writeStudioState('documents', result.id, legacy);
   const refreshedDocx = Buffer.from(await (await fetch(base + result.files.docx, { headers })).arrayBuffer());
   const refreshedPdf = Buffer.from(await (await fetch(base + result.files.pdf, { headers })).arrayBuffer());
-  assert.match(await (await JSZip.loadAsync(refreshedDocx)).file('word/document.xml').async('string'), /w:jc w:val="both"/);
+  const refreshedZip = await JSZip.loadAsync(refreshedDocx);
+  assert.match(await refreshedZip.file('word/document.xml').async('string'), /w:jc w:val="both"/);
+  assert.deepEqual(Buffer.from(await refreshedZip.file('word/media/letterhead.png').async('nodebuffer')), await fs.readFile(path.join(root, 'server/assets/ej-brand/letterhead.png')));
   assert.equal((await PDFDocument.load(refreshedPdf)).getPageCount(), result.pageCount);
   const unchanged = await readStudioState('documents', result.id);
   assert.equal(unchanged.updatedAt, legacyVersion); assert.deepEqual(unchanged.document, legacy.document); assert.equal(calls.length, 0);

@@ -30,7 +30,7 @@ For a carousel, establish a strong cover, connected middle and useful closing. P
 
 Use the supplied dimensions and network guidance. A horizontal graphic needs substantially less text; a thumbnail needs a clear focal point, not a reduced document. Portrait graphics still need to read on a phone. Keep story/TikTok essentials inside runtime safe margins. A PNG is not a video, Reel or automatic social-media publication.
 
-Use documentary-style photographs of contemporary Mexico unless the material names a different location. Relevant people may appear with realistic proportions and credible activity. Generated images remain illustrative, with the runtime's visible IA caption. Keep lettering, logos and editable text out of generated photographs. Give human subjects and the central photographic action room; do not cover faces with body text.
+Use documentary-style photographs of contemporary Mexico unless the material names a different location. Relevant people may appear with realistic proportions and credible activity. Generated images remain illustrative and are tracked as separate assets; do not add a visible IA caption. Keep lettering, logos and editable text out of generated photographs. Give human subjects and the central photographic action room; do not cover faces with body text.
 
 ## Review and refine
 

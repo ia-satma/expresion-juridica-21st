@@ -145,7 +145,6 @@ export async function composeSocialPiece({post={},index=0,total=1,size='portrait
   const region={x:m,y:contentTop,w:w-2*m,h:Math.max(40,contentBottom-contentTop)};
   const headingTarget={compact:94,balanced:112,expressive:130}[design.headlineScale]||112;
   const artBuffer=Buffer.isBuffer(artwork)?artwork:artwork?.buffer;
-  const aiGenerated=Boolean((!Buffer.isBuffer(artwork)&&artwork?.aiGenerated)||post.artwork?.aiGenerated);
   const hasPhoto=Boolean(artBuffer);
   const layout=['split','typographic','editorial','quote','steps','photographic','frame','closing','photo-side','photo-editorial'].includes(post.layout)?post.layout:'editorial';
   const background=['solid','tonal','glow'].includes(design.background)?design.background:'solid';
@@ -158,8 +157,7 @@ export async function composeSocialPiece({post={},index=0,total=1,size='portrait
     const gradientId=id('glow');gradients.push({id:gradientId,type:'radial',cx:w*.8,cy:h*.22,r:w*.92,stops:[{offset:0,color:B.gold,opacity:palette.dark?.2:.18},{offset:1,color:B.gold,opacity:0}]});
     rect('glow',0,0,w,h,`url(#${gradientId})`);
   }
-  const photoCaption=(x,y,width)=>{if(aiGenerated)addText('ai-caption','Imagen generada con IA',{x,y,w:width,h:32},'body',24,24,palette.ink,'',{role:'caption',align:'left'});};
-  const photo=(x,y,width,height,role='artwork')=>{image(role,artBuffer,x,y,width,height,{role:'artwork',blocking:true});photoCaption(x,y+height+8,width);};
+  const photo=(x,y,width,height,role='artwork')=>{image(role,artBuffer,x,y,width,height,{role:'artwork',blocking:true});};
   const textFlow=(box,target=40)=>{
     let flow=flowMetrics(post,box.w,fonts,target);
     if((flow.height()>box.h||flow.blocks.some(block=>block.metrics.ordinaryWordTooWide))&&target>36)flow=flowMetrics(post,box.w,fonts,36);
@@ -211,7 +209,7 @@ export async function composeSocialPiece({post={},index=0,total=1,size='portrait
     image('logo',assets.logo,rail/2-71,safeTop+38,142,142*442/480,{role:'logo',blocking:true});
     headerX=rail+44;footerX=headerX;
     const box={x:headerX,y:region.y,w:w-headerX-m,h:region.h};panel(box);article(box,headingTarget,true);
-    if(hasPhoto){const y=Math.max(region.y+20,safeTop+198),height=Math.max(45,Math.min(220,contentBottom-y-(aiGenerated?44:0)));image('artwork',artBuffer,30,y,rail-60,height,{role:'artwork',blocking:true});if(aiGenerated)addText('ai-caption','Imagen generada con IA',{x:30,y:y+height+8,w:rail-60,h:64},'body',24,24,B.paper,'',{role:'caption',surface:B.navy});}
+    if(hasPhoto){const y=Math.max(region.y+20,safeTop+198),height=Math.max(45,Math.min(220,contentBottom-y));image('artwork',artBuffer,30,y,rail-60,height,{role:'artwork',blocking:true});}
   }else{
     const badgeW=90,badgeX=w-m-badgeW,badgeY=safeTop+27;
     if(!palette.dark)rect('logo-badge',badgeX-12,badgeY-10,badgeW+24,badgeW*442/480+20,B.navy);
@@ -228,27 +226,26 @@ export async function composeSocialPiece({post={},index=0,total=1,size='portrait
       gradients.push({id:topFade,type:'linear',x1:0,y1:0,x2:0,y2:safeTop+150,stops:[{offset:0,color:palette.background,opacity:.96},{offset:.8,color:palette.background,opacity:.88},{offset:1,color:palette.background,opacity:0}]});
       gradients.push({id:bottomFade,type:'linear',x1:0,y1:Math.max(0,contentBottom-40),x2:0,y2:h-safeBottom,stops:[{offset:0,color:palette.background,opacity:0},{offset:.38,color:palette.background,opacity:.9},{offset:1,color:palette.background,opacity:.98}]});
       rect('background-scrim',0,0,w,h,`url(#${horizontal})`);rect('header-scrim',0,0,w,h,`url(#${topFade})`);rect('footer-scrim',0,0,w,h,`url(#${bottomFade})`);nodes.push(...backgroundNodes);
-      const box={...region,w:region.w*(short?.62:.66),h:region.h-(aiGenerated?48:0)};panel(box);article(box,headingTarget,true);
-      if(aiGenerated)addText('ai-caption','Imagen generada con IA',{x:m,y:contentBottom-34,w:region.w,h:32},'body',24,24,palette.ink,'',{role:'caption'});
+      const box={...region,w:region.w*(short?.62:.66),h:region.h};panel(box);article(box,headingTarget,true);
     }else if(usePhoto&&position==='top'&&(!short||design.imagePosition==='top')){
       const titleSpace=Math.min(region.h*.31,280),head=fitText(post.headline,{...region,h:titleSpace},fonts.faces.heading,headingTarget,56,3);
       addText('headline',post.headline,{x:region.x,y:region.y,w:region.w,h:head.height},'heading',head.size,head.size,palette.title,'headline',{role:'headline'});
       let flow=flowMetrics(post,region.w,fonts,40);if(flow.height()>region.h*.32)flow=flowMetrics(post,region.w,fonts,36);
-      const cap=aiGenerated?42:0,remaining=region.h-head.height-flow.height()-64-cap;
+      const remaining=region.h-head.height-flow.height()-64;
       const desired=Math.max(design.imageShare==='dominant'?430:330,remaining*(design.imageShare==='dominant'?.95:.78));
       const photoH=Math.max(90,Math.min(desired,remaining));
       const photoY=region.y+head.height+28;photo(region.x,photoY,region.w,photoH);
-      textFlow({x:region.x,y:photoY+photoH+cap+32,w:region.w,h:contentBottom-photoY-photoH-cap-32},flow.size);
+      textFlow({x:region.x,y:photoY+photoH+32,w:region.w,h:contentBottom-photoY-photoH-32},flow.size);
     }else if(usePhoto&&layout==='photo-editorial'&&!short&&position!=='top'){
       const head=fitText(post.headline,{...region,h:region.h*.37},fonts.faces.heading,headingTarget,56,3);
       addText('headline',post.headline,{x:region.x,y:region.y,w:region.w,h:head.height},'heading',head.size,head.size,palette.title,'headline',{role:'headline'});
       const rowY=region.y+head.height+32,rowH=contentBottom-rowY,gap=40,photoW=region.w*(design.imageShare==='dominant'?.53:.46),textW=region.w-photoW-gap,left=position==='right'?region.x+textW+gap:region.x;
-      photo(left,rowY,photoW,Math.max(45,Math.min(rowH-(aiGenerated?42:0),photoW*.86)));
+      photo(left,rowY,photoW,Math.max(45,Math.min(rowH,photoW*.86)));
       const textX=position==='right'?region.x:region.x+photoW+gap;const box={x:textX,y:rowY,w:textW,h:rowH};panel(box);textFlow(box);
     }else if(usePhoto){
       const gap=40,photoW=region.w*(short?.36:design.imageShare==='dominant'?.51:.4),textW=region.w-photoW-gap;
       const left=position==='left',photoX=left?region.x:region.x+textW+gap,textX=left?region.x+photoW+gap:region.x;
-      const photoH=Math.min(region.h-(aiGenerated?42:0),short?region.h:photoW*1.38);
+      const photoH=Math.min(region.h,short?region.h:photoW*1.38);
       photo(photoX,region.y,photoW,Math.max(45,photoH));const box={x:textX,y:region.y,w:textW,h:region.h};panel(box);article(box,Math.min(headingTarget,100),!short);
     }else{
       const box={...region};

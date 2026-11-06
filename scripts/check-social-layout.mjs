@@ -28,7 +28,8 @@ try{
     const scale=format.dimensions[0]/1080;
     for(const node of result.canvas.nodes.filter(node=>node.type==='text')){
       if(node.role==='body')assert(node.size/scale>=35.998,'Body must retain a width-based legibility floor');
-      if(['caption','footer'].includes(node.role))assert(node.size/scale>=23.998);
+      if(node.role==='caption')assert.fail('AI disclosure captions are no longer visible in social artwork');
+      if(node.role==='footer')assert(node.size/scale>=23.998);
       assert(node.lines.every(line=>Number.isFinite(line.baseline)&&line.bounds.w<=node.box.w+.6));
     }
     const svg=svgSocialCanvas(result.canvas,fonts);const png=await sharp(Buffer.from(svg)).png().toBuffer();
@@ -106,7 +107,7 @@ try{
     assert(piece.canvas.nodes.some(node=>node.type==='image'&&node.role.startsWith('background')||node.role==='artwork'));
     controlChecks++;
   }
-  const summary={passed:true,layoutVersion:2,matrix:count,controls:controlChecks,layouts:layouts.length,sizes:Object.keys(SOCIAL_FORMATS).length,actualPngDimensions:true,bodyMinimumLogical:36,captionMinimumLogical:24,exactLineRuns:true,longTokenWrapping:true,naturalWordHeadlines:true,balancedHeadlineConnectors:true,emptyMessageBlocked:true,fullBleedWithScrims:true,widePhotoTopCrop:true,matchingSvgHtmlCrop:true,impossibleContentDiagnosed:true,rawTextPreserved:true,gradients:['solid','tonal','glow'],paidCalls:0,examples,output};
+  const summary={passed:true,layoutVersion:2,matrix:count,controls:controlChecks,layouts:layouts.length,sizes:Object.keys(SOCIAL_FORMATS).length,actualPngDimensions:true,bodyMinimumLogical:36,visibleAICaptions:false,exactLineRuns:true,longTokenWrapping:true,naturalWordHeadlines:true,balancedHeadlineConnectors:true,emptyMessageBlocked:true,fullBleedWithScrims:true,widePhotoTopCrop:true,matchingSvgHtmlCrop:true,impossibleContentDiagnosed:true,rawTextPreserved:true,gradients:['solid','tonal','glow'],paidCalls:0,examples,output};
   await fs.writeFile(path.join(output,'results.json'),JSON.stringify(summary,null,2)+'\n');
   console.log(JSON.stringify(summary));
 }finally{process.chdir(root);await fs.rm(temporary,{recursive:true,force:true});}

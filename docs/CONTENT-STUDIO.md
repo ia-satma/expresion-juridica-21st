@@ -18,7 +18,7 @@ El mismo esquema de composición produce PNG y HTML portátil con texto real edi
 
 `server/document-generator.mjs` conserva por defecto el texto completo pegado por el usuario. El modo «Organizar con Sol» es opcional y explícito. Los resultados se editan en Tiptap; guardar modificaciones reconstruye Word y PDF sin una llamada de IA.
 
-La plantilla procede de `Hoja membretada.pdf` suministrada por el usuario. `scripts/build-letterhead.py` elimina únicamente el texto de muestra y conserva la identidad y los datos de contacto. El PDF usa el membrete vectorial y texto seleccionable con fuentes incrustadas. El DOCX usa párrafos, títulos, listas y énfasis nativos, dos fuentes incrustadas y un membrete independiente en la cabecera de cada página. El texto no se rasteriza ni se protege contra edición. La paginación de Word puede variar según el visor y las ediciones del usuario.
+La plantilla procede de la versión final de `Hoja membretada.pdf` suministrada por el usuario. El activo vectorial se conserva tal cual: panel azul lateral, logotipo superior, monograma de fondo, hilo dorado y datos de contacto en el pie. El pipeline de la plantilla valida el PDF Letter y no vuelve a insertar el correo, para evitar duplicados. El PDF usa el membrete vectorial y texto seleccionable con fuentes incrustadas. El DOCX usa párrafos, títulos, listas y énfasis nativos, dos fuentes incrustadas y un PNG rasterizado de la plantilla final en la cabecera de cada página. El texto no se rasteriza ni se protege contra edición; el área inferior se reserva para el hilo y el pie de contacto. La paginación de Word puede variar según el visor y las ediciones del usuario.
 
 Tiptap se usa solo como editor abierto, con StarterKit. Los exportadores DOCX y PDF son propios: no requieren conversión ni suscripción Pro de Tiptap. El paquete de navegador está versionado en `public/admin/vendor/tiptap.js`; `npm run build:editor` lo reconstruye y actualiza sus avisos de licencia. Las fuentes y la plantilla del editor se sirven a través de rutas autenticadas; nunca se expone una clave de API. PdfCraft no se añadió: su motor Rust y su enfoque de edición de PDF no son necesarios para este flujo.
 
@@ -30,13 +30,13 @@ Las rutas requieren sesión y permisos de editor para modificar; las mutaciones 
 
 El cliente obtiene el token CSRF vigente de su cookie al enviar cada mutación. Así puede guardar aunque otra pestaña haya renovado el token al comprobar la sesión; la validación del servidor se mantiene. Los documentos organizados con IA conservan el título solicitado como primer encabezado, aun si el modelo propone otra sección inicial.
 
-Las fotografías de PowerPoint usan la proporción real de la imagen para calcular su recorte. El marco puede ser vertical, horizontal o cuadrado sin estirar la foto. `server/presentation-images.mjs` corrige también el recorte de los PPTX anteriores al descargarlos, conservando sus imágenes originales, fuentes y objetos editables. No altera el archivo guardado ni consume otra llamada de IA.
+Las fotografías de PowerPoint usan la proporción real de la imagen para calcular su recorte. El marco puede ser vertical, horizontal o cuadrado sin estirar la foto. `server/presentation-images.mjs` corrige también el recorte de los PPTX anteriores al descargarlos, conservando sus imágenes originales, fuentes y objetos editables. Las imágenes generadas se registran internamente, pero no llevan una leyenda visible en la diapositiva. No altera el archivo guardado ni consume otra llamada de IA.
 
 ## Validación
 
 - `node scripts/check-presentations.mjs`: entradas, formatos, fuentes, fotos aportadas primero, límite técnico de imágenes, contexto México y pies nativos en PPTX.
 - `node scripts/check-social-studio.mjs`: generación asíncrona, autorización, edición sin llamadas de IA, HTML/PNG/ZIP, seis copies, ocho composiciones, cuatro formatos e historial recuperado en otra instancia.
-- `node scripts/check-documents.mjs`: conservación íntegra del texto, DOCX nativo, dos fuentes, PDF de varias páginas, membrete repetido, edición sin IA, Sol opcional y recuperación desde otra instancia.
+- `node scripts/check-documents.mjs`: conservación íntegra del texto, DOCX nativo, dos fuentes, PDF de varias páginas, plantilla final repetida sin contacto duplicado ni correo antiguo, edición sin IA, Sol opcional y recuperación desde otra instancia.
 - `node scripts/check-cms-csrf.mjs`: uso del token vigente cuando cambia en otra pestaña, con alternativa para una cookie ausente o mal formada.
 - `node scripts/check-presentation-images.mjs`: proporciones en marcos verticales, horizontales y cuadrados; reparación repetible de archivos anteriores sin modificar el medio original.
 

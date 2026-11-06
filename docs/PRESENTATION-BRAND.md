@@ -32,7 +32,7 @@ PPTX, PDF y PNG en ZIP se generan según la selección; las vistas previas se co
 
 ## Comprobación
 
-El agente carga `server/agents/ej-content-studio/SKILL.md` en cada solicitud de contenido. La dirección fotográfica admite personas y usa México contemporáneo por defecto; una indicación geográfica expresa del material tiene prioridad. El estilo es documental y realista. Cada foto generada lleva debajo el texto nativo y editable «Imagen generada con IA». Las fotos aportadas no reciben esa etiqueta. Fotos y logotipos son objetos independientes que se pueden mover o reemplazar en PowerPoint.
+El agente carga `server/agents/ej-content-studio/SKILL.md` en cada solicitud de contenido. La dirección fotográfica admite personas y usa México contemporáneo por defecto; una indicación geográfica expresa del material tiene prioridad. El estilo es documental y realista. Las fotos generadas se mantienen como objetos independientes y se registran internamente, sin añadir una leyenda visible al diseño. Las fotos aportadas tampoco reciben una leyenda. Fotos y logotipos son objetos independientes que se pueden mover o reemplazar en PowerPoint.
 
 `node scripts/check-presentations.mjs` usa una API simulada y verifica lectura de documentos, marca, fuentes incrustadas, formatos, precedencia de imágenes aportadas, límite de imágenes de IA y fuentes web. No consume créditos de OpenAI.
 
