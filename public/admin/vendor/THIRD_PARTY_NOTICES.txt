@@ -1,4 +1,4 @@
-@tiptap/core 3.32.2
+@tiptap/core 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -96,7 +96,7 @@ THE SOFTWARE.
 
 ---
 
-@tiptap/pm 3.32.2
+@tiptap/pm 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -314,7 +314,7 @@ THE SOFTWARE.
 
 ---
 
-@tiptap/extension-blockquote 3.32.2
+@tiptap/extension-blockquote 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -340,7 +340,7 @@ SOFTWARE.
 
 ---
 
-@tiptap/extension-bold 3.32.2
+@tiptap/extension-bold 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -366,7 +366,7 @@ SOFTWARE.
 
 ---
 
-@tiptap/extension-code 3.32.2
+@tiptap/extension-code 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -392,7 +392,7 @@ SOFTWARE.
 
 ---
 
-@tiptap/extension-code-block 3.32.2
+@tiptap/extension-code-block 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -418,7 +418,7 @@ SOFTWARE.
 
 ---
 
-@tiptap/extension-document 3.32.2
+@tiptap/extension-document 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -444,7 +444,7 @@ SOFTWARE.
 
 ---
 
-@tiptap/extension-hard-break 3.32.2
+@tiptap/extension-hard-break 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -470,7 +470,7 @@ SOFTWARE.
 
 ---
 
-@tiptap/extension-heading 3.32.2
+@tiptap/extension-heading 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -496,7 +496,7 @@ SOFTWARE.
 
 ---
 
-@tiptap/extension-horizontal-rule 3.32.2
+@tiptap/extension-horizontal-rule 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -522,7 +522,7 @@ SOFTWARE.
 
 ---
 
-@tiptap/extension-italic 3.32.2
+@tiptap/extension-italic 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -572,7 +572,7 @@ THE SOFTWARE.
 
 ---
 
-@tiptap/extension-link 3.32.2
+@tiptap/extension-link 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -598,7 +598,7 @@ SOFTWARE.
 
 ---
 
-@tiptap/extension-list 3.32.2
+@tiptap/extension-list 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -624,7 +624,7 @@ SOFTWARE.
 
 ---
 
-@tiptap/extension-paragraph 3.32.2
+@tiptap/extension-paragraph 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -650,7 +650,7 @@ SOFTWARE.
 
 ---
 
-@tiptap/extension-strike 3.32.2
+@tiptap/extension-strike 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -676,7 +676,7 @@ SOFTWARE.
 
 ---
 
-@tiptap/extension-text 3.32.2
+@tiptap/extension-text 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -702,7 +702,7 @@ SOFTWARE.
 
 ---
 
-@tiptap/extension-underline 3.32.2
+@tiptap/extension-underline 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -776,7 +776,7 @@ THE SOFTWARE.
 
 ---
 
-@tiptap/extensions 3.32.2
+@tiptap/extensions 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
@@ -802,7 +802,7 @@ SOFTWARE.
 
 ---
 
-@tiptap/starter-kit 3.32.2
+@tiptap/starter-kit 3.33.0
 MIT License
 
 Copyright (c) 2025, Tiptap GmbH
