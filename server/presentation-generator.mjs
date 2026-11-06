@@ -71,6 +71,17 @@ async function generateSlideImage(data, slide) {
   return { buffer: await sharp(Buffer.from(result.data[0].b64_json, 'base64')).resize(1200, 800, { fit: 'cover' }).png().toBuffer(), model };
 }
 let metricsPromise;
+let bookendAssetsPromise;
+async function presentationBookends() {
+  if (!bookendAssetsPromise) bookendAssetsPromise = Promise.all([
+    ['opening', 'presentation-opening.jpeg'],
+    ['closing', 'presentation-closing.jpeg']
+  ].map(async ([kind, file]) => [kind, await sharp(await fs.readFile(path.join(process.cwd(), 'server/assets/ej-brand', file))).resize(1600, 900, { fit: 'cover' }).png().toBuffer()]));
+  return Object.fromEntries(await bookendAssetsPromise);
+}
+function bookendScene(buffer) {
+  return [{ type: 'image', buffer, x: 0, y: 0, w: 1600, h: 900, bookend: true }];
+}
 async function prepareFonts() {
   if (!metricsPromise) metricsPromise = (async () => {
     const dir = path.join(process.cwd(), 'server/assets/ej-brand');
@@ -232,7 +243,7 @@ export async function generatePresentation({ topic = '', sourceText = '', slideC
   const selectedFormats = [...new Set(formats)].filter(x => ['pptx', 'pdf', 'png'].includes(x)); if (!selectedFormats.length) throw new Error('PRESENTATION_FORMAT_REQUIRED');
   progress('Sol está preparando el contenido y la secuencia de diapositivas',0,1,'content');
   const result = await outline({ topic: clean(topic, 10000), source: clean(sourceText, 120000), count, language, includeVisuals, webSearch });
-  const data = result.data; const metrics = await prepareFonts(); const assets = await presentationBrandAssets();
+  const data = result.data; const metrics = await prepareFonts(); const assets = await presentationBrandAssets(); const bookends = await presentationBookends();
   const artworkBySlide = new Map(); const generated = [];
   const candidates = [0, ...data.slides.map((s, i) => i > 0 && s.kind === 'content' && s.visual.type === 'image' ? i : -1).filter(i => i >= 0)];
   if (includeVisuals) supportImages.slice(0, count - 1).forEach((image, i) => artworkBySlide.set(i, image.buffer));
@@ -244,7 +255,8 @@ export async function generatePresentation({ topic = '', sourceText = '', slideC
       for (const image of batch) { artworkBySlide.set(image.index, image.buffer); generated.push(image); }
     }
   }
-  const scenes = data.slides.map((slide, i) => sceneFor(slide, i, count, { assets, metrics, artwork: artworkBySlide.get(i), style, branding }));
+  const contentScenes = data.slides.map((slide, i) => sceneFor(slide, i, count, { assets, metrics, artwork: artworkBySlide.get(i), style, branding }));
+  const scenes = [bookendScene(bookends.opening), ...contentScenes, bookendScene(bookends.closing)];
   const pngs = []; for (const [index,scene] of scenes.entries()){progress(`Componiendo diapositiva ${index+1} de ${scenes.length}`,index,scenes.length,'layout');pngs.push(await sharp(Buffer.from(svgFor(scene, metrics))).png().toBuffer());}
   const id = crypto.randomUUID(); const name = slug(data.title); const files = { pptx: null, pdf: null, images: [], artwork: null, imagesZip: null };
   const exportTotal=pngs.length+selectedFormats.length+(generated.length?1:0);let exported=0;
@@ -255,7 +267,7 @@ export async function generatePresentation({ topic = '', sourceText = '', slideC
   if (selectedFormats.includes('png')) {exporting('Preparando la descarga de imágenes'); const zip = new JSZip(); pngs.forEach((png, i) => zip.file(`${name}-${String(i + 1).padStart(2, '0')}.png`, png)); files.imagesZip = await saveFile(id, `${name}-diapositivas.zip`, await zip.generateAsync({ type: 'nodebuffer' }));exported++; }
   if (generated.length){exporting('Guardando las fotografías generadas');files.artwork = await saveFile(id, `${name}-imagen-ia.png`, generated[0].buffer);exported++;}
   progress('Archivos preparados',exported,exportTotal,'export');
-  return { id, agentSkill: EDITORIAL_SKILL_ID, title: data.title, subtitle: data.subtitle, topic: clean(topic), sourceLength: clean(sourceText, 120000).length, language, style, branding, brandProfile: B.id, formats: selectedFormats, documentNames, uploadedImageCount: supportImages.length, includeVisuals, webSearch, sources: result.sources, slideCount: count, aiUsed: result.aiUsed, model: result.model, serviceTier:result.serviceTier||null, imageUsed: Boolean(generated.length), imageModel: generated.length ? presentationModels().imageModel : null, generatedImageCount: generated.length, warning: result.warning, createdAt: new Date().toISOString(), outline: data, files };
+  return { id, agentSkill: EDITORIAL_SKILL_ID, title: data.title, subtitle: data.subtitle, topic: clean(topic), sourceLength: clean(sourceText, 120000).length, language, style, branding, brandProfile: B.id, formats: selectedFormats, documentNames, uploadedImageCount: supportImages.length, includeVisuals, webSearch, sources: result.sources, slideCount: scenes.length, contentSlideCount: count, bookendSlides: { opening: 1, closing: 1, version: 'ej-presentation-bookends-v1' }, aiUsed: result.aiUsed, model: result.model, serviceTier:result.serviceTier||null, imageUsed: Boolean(generated.length), imageModel: generated.length ? presentationModels().imageModel : null, generatedImageCount: generated.length, warning: result.warning, createdAt: new Date().toISOString(), outline: data, files };
 }
 export function filePathForPresentation(file) { return file?.localPath ? path.join(process.cwd(), file.localPath) : null; }
 export function ensurePresentationDir() { fsSync.mkdirSync(WORK_DIR, { recursive: true }); return WORK_DIR; }

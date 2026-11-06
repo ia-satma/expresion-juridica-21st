@@ -983,19 +983,23 @@ function presentationStatus(presentation) {
   if (presentation.aiUsed) return `Contenido: ${presentation.model || 'OpenAI'}${presentation.imageUsed ? ` · Imágenes: ${presentation.imageModel}` : ''}`;
   return 'Archivo de prueba · IA no utilizada';
 }
+function presentationSlideLabel(presentation) {
+  const total = presentation.slideCount || 0;
+  return `${total} diapositivas${presentation.bookendSlides ? ' · apertura y cierre institucionales incluidos' : ''}`;
+}
 
 function renderPresentationResult(presentation) {
   const result = $('#presentation-result');
   result.hidden = false;
   $('#presentation-result-title').textContent = presentation.title || 'Presentación lista';
-  $('#presentation-result-meta').textContent = `${presentation.slideCount || 0} diapositivas · ${formatDate(presentation.createdAt)} · ${presentationStatus(presentation)}. Revisa el contenido antes de compartirlo.`;
+  $('#presentation-result-meta').textContent = `${presentationSlideLabel(presentation)} · ${formatDate(presentation.createdAt)} · ${presentationStatus(presentation)}. Revisa el contenido antes de compartirlo.`;
   for (const [kind, suffix] of [['pptx', 'pptx'], ['pdf', 'pdf'], ['imagesZip', 'images'], ['artwork', 'artwork']]) {
     const link = $(`#presentation-download-${suffix}`);
     link.hidden = !presentation.files?.[kind];
     if (presentation.files?.[kind]) link.href = presentation.files[kind];
     else link.removeAttribute('href');
   }
-  $('#presentation-result-gallery').innerHTML = (presentation.files?.images || []).map((src, index) => `<figure class="presentation-slide"><img src="${escapeHtml(src)}" alt="Diapositiva ${index + 1} de ${escapeHtml(presentation.title)}" loading="lazy" /><figcaption>Diapositiva ${index + 1}</figcaption></figure>`).join('');
+  $('#presentation-result-gallery').innerHTML = (presentation.files?.images || []).map((src, index) => { const label = presentation.bookendSlides ? index === 0 ? 'Apertura institucional' : index === presentation.files.images.length - 1 ? 'Cierre institucional' : `Contenido ${index}` : `Diapositiva ${index + 1}`; return `<figure class="presentation-slide"><img src="${escapeHtml(src)}" alt="${escapeHtml(label)} de ${escapeHtml(presentation.title)}" loading="lazy" /><figcaption>${escapeHtml(label)}</figcaption></figure>`; }).join('');
   const sources = (presentation.sources || []).filter(source => /^https?:\/\//i.test(source.url || ''));
   const sourceElement = $('#presentation-sources');
   sourceElement.hidden = !sources.length;
@@ -1006,7 +1010,7 @@ function renderPresentations() {
   const list = $('#presentations-list');
   list.innerHTML = state.presentations.map(presentation => {
     const downloads = [['pptx', 'PPTX'], ['pdf', 'PDF'], ['imagesZip', 'PNG (ZIP)']].filter(([kind]) => presentation.files?.[kind]).map(([kind, label]) => `<a class="button button-secondary" href="${escapeHtml(presentation.files[kind])}" download>Descargar ${label}</a>`).join('');
-    return `<article class="presentation-card"><div class="presentation-card-copy"><p class="eyebrow">${escapeHtml(formatDate(presentation.createdAt))}</p><h3>${escapeHtml(presentation.title || presentation.topic)}</h3><p>${escapeHtml(presentation.subtitle || '')}</p><small>${escapeHtml(`${presentation.slideCount || 0} diapositivas · ${presentationStatus(presentation)}`)}</small></div><div class="presentation-card-actions">${downloads}<button class="mini-button view-presentation" type="button" data-presentation-id="${escapeHtml(presentation.id)}">Ver diapositivas</button></div></article>`;
+    return `<article class="presentation-card"><div class="presentation-card-copy"><p class="eyebrow">${escapeHtml(formatDate(presentation.createdAt))}</p><h3>${escapeHtml(presentation.title || presentation.topic)}</h3><p>${escapeHtml(presentation.subtitle || '')}</p><small>${escapeHtml(`${presentationSlideLabel(presentation)} · ${presentationStatus(presentation)}`)}</small></div><div class="presentation-card-actions">${downloads}<button class="mini-button view-presentation" type="button" data-presentation-id="${escapeHtml(presentation.id)}">Ver diapositivas</button></div></article>`;
   }).join('') || '<div class="empty-state"><strong>Aún no hay presentaciones</strong><span>Genera la primera desde el formulario.</span></div>';
   $$('.view-presentation', list).forEach(button => button.addEventListener('click', () => {
     const presentation = state.presentations.find(item => item.id === button.dataset.presentationId);

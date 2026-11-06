@@ -30,6 +30,8 @@ La generación no exige clasificación, confirmaciones del material ni bloqueo p
 
 PPTX, PDF y PNG en ZIP se generan según la selección; las vistas previas se conservan para el historial. Las presentaciones anteriores mantienen sus descargas y no se rediseñan automáticamente.
 
+Cada presentación nueva añade dos láminas institucionales fijas: `presentation-opening.jpeg` abre la presentación y `presentation-closing.jpeg` la cierra. El número indicado en el formulario corresponde al contenido generado; el resultado final incluye esas dos láminas adicionales. Se conservan como imágenes editables en PowerPoint y como páginas completas en PDF/PNG. El historial expone el total y marca que incluye apertura y cierre.
+
 ## Comprobación
 
 El agente carga `server/agents/ej-content-studio/SKILL.md` en cada solicitud de contenido. La dirección fotográfica admite personas y usa México contemporáneo por defecto; una indicación geográfica expresa del material tiene prioridad. El estilo es documental y realista. Las fotos generadas se mantienen como objetos independientes y se registran internamente, sin añadir una leyenda visible al diseño. Las fotos aportadas tampoco reciben una leyenda. Fotos y logotipos son objetos independientes que se pueden mover o reemplazar en PowerPoint.
