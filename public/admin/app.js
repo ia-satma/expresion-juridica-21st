@@ -1048,7 +1048,7 @@ async function submitPresentation(event) {
   const values = {
     topic, sourceText: $('#presentation-source').value, slideCount: $('#presentation-slide-count').value,
     language: $('#presentation-language').value, style: $('#presentation-style').value, branding: $('#presentation-branding').value,
-    includeVisuals: $('#presentation-include-visuals').checked, includeImage: $('#presentation-include-image').checked,
+    includeVisuals: $('#presentation-include-visuals').checked, includeImage: $('#presentation-include-image').checked, includeBookends: $('#presentation-include-bookends').checked,
     webSearch: $('#presentation-web-search').checked, formats: JSON.stringify(formats), async:true
   };
   Object.entries(values).forEach(([key, value]) => body.append(key, String(value)));

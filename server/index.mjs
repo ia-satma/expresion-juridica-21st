@@ -1100,7 +1100,7 @@ app.post('/api/cms/presentations/generate', requireAuth, requireEditor, requireC
       language: body.language === 'en' ? 'en' : 'es',
       style: ['corporate', 'editorial', 'dark'].includes(body.style) ? body.style : 'corporate',
       branding: body.branding === 'minimal' ? 'minimal' : 'firm',
-      includeVisuals: enabled(body.includeVisuals), includeImage: enabled(body.includeImage), webSearch: enabled(body.webSearch),
+      includeVisuals: enabled(body.includeVisuals), includeImage: enabled(body.includeImage), includeBookends: body.includeBookends === undefined ? true : enabled(body.includeBookends), webSearch: enabled(body.webSearch),
       formats, documentNames: inputs.documentNames, supportImages: inputs.supportImages
     };
     const work=async(progress=()=>{})=>{

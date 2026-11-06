@@ -30,7 +30,7 @@ La generación no exige clasificación, confirmaciones del material ni bloqueo p
 
 PPTX, PDF y PNG en ZIP se generan según la selección; las vistas previas se conservan para el historial. Las presentaciones anteriores mantienen sus descargas y no se rediseñan automáticamente.
 
-Cada presentación nueva añade dos láminas institucionales fijas: `presentation-opening.jpeg` abre la presentación y `presentation-closing.jpeg` la cierra. El número indicado en el formulario corresponde al contenido generado; el resultado final incluye esas dos láminas adicionales. Se conservan como imágenes editables en PowerPoint y como páginas completas en PDF/PNG. El historial expone el total y marca que incluye apertura y cierre.
+Cada presentación nueva puede añadir dos láminas institucionales fijas: `presentation-opening.jpeg` abre la presentación y `presentation-closing.jpeg` la cierra. El interruptor **Incluir diapositiva de entrada y cierre** viene activado y permite desactivarlas cuando se necesita solo el contenido. El número indicado en el formulario corresponde al contenido generado; cuando se activa, el resultado final incluye esas dos láminas adicionales. Se conservan como imágenes editables en PowerPoint y como páginas completas en PDF/PNG. El historial expone el total y marca si incluye apertura y cierre.
 
 ## Comprobación
 

@@ -122,7 +122,7 @@
               </div>
               <details class="presentation-notes"><summary>Pegar material de apoyo</summary><label for="presentation-source" class="sr-only">Material de apoyo adicional</label><textarea id="presentation-source" rows="4" maxlength="120000" placeholder="Notas, objetivos, cifras o texto de referencia…"></textarea></details>
               <div class="presentation-grid presentation-grid-three">
-                <div class="presentation-field"><label for="presentation-slide-count">Número de diapositivas</label><input id="presentation-slide-count" type="number" min="3" max="20" value="8" required /></div>
+                <div class="presentation-field"><label for="presentation-slide-count">Diapositivas de contenido</label><input id="presentation-slide-count" type="number" min="3" max="20" value="8" required /><small>Elige cuántas diapositivas tendrá el contenido; puedes sumar o quitar las láminas institucionales.</small></div>
                 <div class="presentation-field"><label for="presentation-language">Idioma</label><select id="presentation-language"><option value="es">Español</option><option value="en">English</option></select></div>
                 <div class="presentation-field"><label for="presentation-style">Plantilla</label><select id="presentation-style"><option value="corporate">Corporativa EJ</option><option value="editorial">Editorial EJ</option><option value="dark">Azul institucional</option></select></div>
               </div>
@@ -132,6 +132,7 @@
               </div>
               <div class="presentation-visuals">
                 <h2>Elementos visuales</h2>
+                <label class="presentation-switch-row"><span><strong>Incluir diapositiva de entrada y cierre</strong><small>Usa las piezas institucionales EJ al principio y al final. Puedes desactivarlas si necesitas solo el contenido.</small></span><input id="presentation-include-bookends" type="checkbox" role="switch" checked /><span class="presentation-switch" aria-hidden="true"></span></label>
                 <label class="presentation-switch-row"><span><strong>Incluir gráficas, diagramas e imágenes</strong><small>La IA los propone cuando el contenido lo amerita. Las gráficas y los diagramas no consumen créditos de imágenes.</small></span><input id="presentation-include-visuals" type="checkbox" role="switch" checked /><span class="presentation-switch" aria-hidden="true"></span></label>
                 <label class="presentation-switch-row"><span><strong>Ilustrar con imágenes generadas por IA</strong><small>Genera hasta 4 imágenes por presentación con GPT Image 2. <em>Usa créditos de OpenAI.</em></small></span><input id="presentation-include-image" type="checkbox" role="switch" /><span class="presentation-switch" aria-hidden="true"></span></label>
                 <label class="presentation-switch-row"><span><strong>Buscar información en la web</strong><small>La IA consulta fuentes en internet para enriquecer la presentación. Si está apagado, usa solo tu material. <em>Usa créditos de OpenAI.</em></small></span><input id="presentation-web-search" type="checkbox" role="switch" /><span class="presentation-switch" aria-hidden="true"></span></label>
