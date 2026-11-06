@@ -76,7 +76,7 @@ try {
   assert(!(await (await request('/api/cms/signatures')).json()).signatures.some(item=>item.id===signature.id));assert((await (await request('/api/cms/signatures?includeDeleted=1')).json()).signatures.some(item=>item.id===signature.id&&item.deletedAt));
   assert.equal((await request(`/api/cms/signatures/${signature.id}/restore`,{method:'POST',body:JSON.stringify({version:trashed.updatedAt})})).status,200);
   assert((await (await request('/api/cms/signatures')).json()).signatures.some(item=>item.id===signature.id));
-  const startedPpt=await request('/api/cms/presentations/generate',{method:'POST',body:JSON.stringify({topic:'Presentación sintética de prueba',slideCount:3,formats:['png'],includeVisuals:false,async:true})});assert.equal(startedPpt.status,202);let pptJob=(await startedPpt.json()).job;assert.equal(pptJob.stage,'prepare');
+  const startedPpt=await request('/api/cms/presentations/generate',{method:'POST',body:JSON.stringify({topic:'Presentación sintética de prueba',slideCount:3,formats:['png'],includeVisuals:false,includeBookends:false,async:true})});assert.equal(startedPpt.status,202);let pptJob=(await startedPpt.json()).job;assert.equal(pptJob.stage,'prepare');
   const pptStart=Date.now();while(!['complete','failed'].includes(pptJob.state)){assert(Date.now()-pptStart<45000);await new Promise(resolve=>setTimeout(resolve,30));pptJob=(await (await request(`/api/cms/presentations/jobs/${pptJob.id}`)).json()).job;}
   assert.equal(pptJob.state,'complete');assert.equal(pptJob.result.aiUsed,false);assert.equal(pptJob.result.slideCount,3);assert.equal((await request(pptJob.result.files.images[0])).status,200);
   assert((await (await request('/api/cms/presentations')).json()).presentations.some(item=>item.id===pptJob.result.id));
