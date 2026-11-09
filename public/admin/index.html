@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex,nofollow" />
     <title>CMS · Expresión Jurídica</title>
-    <link rel="stylesheet" href="/admin/admin.css?v=20261102-ej-brand" /><link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/admin/admin.css?v=20261109-users" /><link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/social.css?v=20261102-studio" />
     <link rel="stylesheet" href="/admin/documents.css?v=20261102-contact" />
     <link rel="stylesheet" href="/admin/seo-audit.css?v=20261103" />
@@ -289,8 +289,15 @@
     </form>
 
     <section class="panel accounts-panel">
-      <div class="panel-heading"><div><span class="panel-index">03</span><p class="eyebrow">Personas con acceso</p><h2>Cuentas autorizadas</h2><p>Revisa el estado de cada cuenta, cambia su rol o genera una nueva contraseña temporal.</p></div><button id="refresh-users" class="text-action" type="button">Actualizar</button></div>
-      <div id="users-list" class="users-list"></div>
+      <div class="panel-heading"><div><span class="panel-index">03</span><p class="eyebrow">Personas con acceso</p><h2>Usuarios (<span id="users-total">0</span>)</h2><p>Revisa el estado de cada cuenta, cambia su rol o genera una nueva contraseña temporal.</p></div><div class="users-panel-actions"><button id="toggle-archived-users" class="text-action" type="button">Mostrar archivados</button><button id="refresh-users" class="text-action" type="button">Actualizar</button></div></div>
+      <div class="users-table-wrap">
+        <table class="users-table"><thead><tr><th scope="col">Correo / usuario</th><th scope="col">Rol</th><th scope="col">Estado</th><th scope="col">Último acceso</th><th scope="col">Acciones</th></tr></thead><tbody id="users-list"></tbody></table>
+      </div>
+    </section>
+
+    <section class="panel access-panel">
+      <div class="panel-heading"><div><p class="eyebrow">Historial protegido</p><h2>Accesos recientes</h2><p>Registro de inicios de sesión exitosos y fallidos. El origen se conserva como una huella protegida.</p></div></div>
+      <div class="access-table-wrap"><table class="access-table"><thead><tr><th scope="col">Fecha y hora</th><th scope="col">Usuario</th><th scope="col">Rol</th><th scope="col">Resultado</th><th scope="col">Origen protegido</th></tr></thead><tbody id="users-access-list"></tbody></table></div>
     </section>
 
     <section id="roles-panel" class="panel roles-panel" hidden>
@@ -303,7 +310,7 @@
 </main>
     </div>
     <div id="toast-region" class="toast-region" aria-live="polite"></div>
-    <script type="module" src="/admin/app.js?v=20261103-layout7"></script>
+    <script type="module" src="/admin/app.js?v=20261109-users"></script>
     <script src="/admin/seo-audit.js?v=20261103b" defer></script>
   </body>
 </html>

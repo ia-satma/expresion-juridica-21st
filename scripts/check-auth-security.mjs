@@ -76,6 +76,9 @@ try {
   assert(!(await (await request('/api/cms/signatures')).json()).signatures.some(item=>item.id===signature.id));assert((await (await request('/api/cms/signatures?includeDeleted=1')).json()).signatures.some(item=>item.id===signature.id&&item.deletedAt));
   assert.equal((await request(`/api/cms/signatures/${signature.id}/restore`,{method:'POST',body:JSON.stringify({version:trashed.updatedAt})})).status,200);
   assert((await (await request('/api/cms/signatures')).json()).signatures.some(item=>item.id===signature.id));
+  const createdUser=await request('/api/cms/users',{method:'POST',body:JSON.stringify({name:'Usuario sintético',email:'user-fixture@invalid.test',role:'editor'})});assert.equal(createdUser.status,201);const createdUserPayload=(await createdUser.json()).user;
+  assert.equal((await request(`/api/cms/users/${createdUserPayload.id}`,{method:'DELETE',body:'{}'})).status,200);assert(!(await (await request('/api/cms/users')).json()).users.some(item=>item.id===createdUserPayload.id));
+  assert.equal((await request(`/api/cms/users/${createdUserPayload.id}/restore`,{method:'POST',body:'{}'})).status,200);assert((await (await request('/api/cms/users')).json()).users.some(item=>item.id===createdUserPayload.id));
   const startedPpt=await request('/api/cms/presentations/generate',{method:'POST',body:JSON.stringify({topic:'Presentación sintética de prueba',slideCount:3,formats:['png'],includeVisuals:false,includeBookends:false,async:true})});assert.equal(startedPpt.status,202);let pptJob=(await startedPpt.json()).job;assert.equal(pptJob.stage,'prepare');
   const pptStart=Date.now();while(!['complete','failed'].includes(pptJob.state)){assert(Date.now()-pptStart<45000);await new Promise(resolve=>setTimeout(resolve,30));pptJob=(await (await request(`/api/cms/presentations/jobs/${pptJob.id}`)).json()).job;}
   assert.equal(pptJob.state,'complete');assert.equal(pptJob.result.aiUsed,false);assert.equal(pptJob.result.slideCount,3);assert.equal((await request(pptJob.result.files.images[0])).status,200);
@@ -84,7 +87,7 @@ try {
   assert.equal(secondRegistration.status, 403);
   await new Promise(resolve => setTimeout(resolve, 50));
   assert(!logs.includes(email) && !logs.includes(password) && !logs.includes(changedPassword) && !logs.includes(authSecret)&&!logs.includes(contact.correo)&&!logs.includes(contact.nombre)&&!logs.includes(contact.mensaje), 'Runtime logs must not contain fixture credentials, identity or form content');
-  console.log(JSON.stringify({ passed: true, isolatedAuthDatabase: true, anonymousIdentityHidden: true, privateRoutes: 10, registrationClosesAfterOwner: true, secureHttpOnlySession: true, secureCsrfCookie: true, firstLoginChangeRequired, authenticatedSettingsSave: true, authenticatedContentSave:true,confirmedContentImmediatelyPublic:true,contactCopyInPrivateCms:true,contactCopyPersisted:true,recoverableSignatureDelete:true,asynchronousPresentations:true,csrfEnforced: true, privateRuntimeLogs: true }));
+  console.log(JSON.stringify({ passed: true, isolatedAuthDatabase: true, anonymousIdentityHidden: true, privateRoutes: 10, registrationClosesAfterOwner: true, secureHttpOnlySession: true, secureCsrfCookie: true, firstLoginChangeRequired, authenticatedSettingsSave: true, authenticatedContentSave:true,confirmedContentImmediatelyPublic:true,contactCopyInPrivateCms:true,contactCopyPersisted:true,recoverableSignatureDelete:true,recoverableUserArchive:true,asynchronousPresentations:true,csrfEnforced: true, privateRuntimeLogs: true }));
 } finally {
   child.kill('SIGTERM');
   if (child.exitCode === null) await new Promise(resolve => child.once('exit', resolve));

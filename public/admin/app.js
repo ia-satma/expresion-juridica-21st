@@ -20,6 +20,8 @@ const state = {
   mediaReturnView: 'pages',
   settings: null,
   users: [],
+  recentAccesses: [],
+  showArchivedUsers: false,
   submissions: [],
   signatures: [],
   signaturesTrash:false,
@@ -514,6 +516,10 @@ function activityLabel(action) {
     'auth.user.role': 'Rol actualizado',
     'auth.user.disable': 'Acceso revocado',
     'auth.user.enable': 'Acceso activado',
+    'auth.user.delete': 'Usuario archivado',
+    'auth.user.restore': 'Usuario restaurado',
+    'auth.user.delete': 'Usuario eliminado',
+    'auth.user.restore': 'Usuario restaurado',
     'auth.user.password.reset': 'Contraseña temporal generada',
     'auth.user.password.change': 'Contraseña actualizada',
     'auth.password.change': 'Contraseña actualizada',
@@ -640,38 +646,46 @@ async function saveSettings() {
 function renderUsers() {
   const list = $('#users-list');
   if (!list) return;
-  const roleMeta = {
-    owner: { label: 'Propietario', short: 'Control total', description: 'Administra usuarios, permisos y todo el CMS.' },
-    editor: { label: 'Editor', short: 'Publica contenido', description: 'Edita contenido, medios, firmas y solicitudes.' },
-    viewer: { label: 'Visualizador', short: 'Solo lectura', description: 'Consulta el CMS sin modificar información.' }
-  };
   const activeUsers = state.users.filter((user) => !user.banned);
   const owners = activeUsers.filter((user) => user.role === 'owner');
   const pending = activeUsers.filter((user) => user.mustChangePassword);
   $('#users-count') && ($('#users-count').textContent = activeUsers.length);
   $('#users-owner-count') && ($('#users-owner-count').textContent = owners.length);
   $('#users-pending-count') && ($('#users-pending-count').textContent = pending.length);
+  $('#users-total') && ($('#users-total').textContent = state.users.length);
   if (!state.users.length) {
-    list.innerHTML = '<div class="empty-state"><strong>Aún no hay usuarios creados</strong><span>Genera una cuenta para dar acceso al CMS.</span></div>';
+    list.innerHTML = '<tr><td colspan="5"><div class="empty-state"><strong>Aún no hay usuarios creados</strong><span>Genera una cuenta para dar acceso al CMS.</span></div></td></tr>';
     return;
   }
   list.innerHTML = state.users.map((user) => {
-    const role = roleMeta[user.role] || roleMeta.viewer;
-    const initials = String(user.name || user.email || 'U').split(/\s+/).slice(0, 2).map((part) => part.charAt(0)).join('').toUpperCase();
-    const statusLabel = user.banned ? 'Acceso revocado' : user.mustChangePassword ? 'Cambio pendiente' : 'Acceso activo';
-    const accessLabel = user.mustChangePassword ? 'Debe crear una contraseña propia al entrar.' : 'Correo y contraseña';
-    const resetAction = user.id === state.user?.id ? '<small class="user-note">Usa “Mi seguridad” para cambiar esta cuenta.</small>' : '<button type="button" class="button button-secondary user-password-reset" data-user-id="' + escapeHtml(user.id) + '">Restablecer contraseña</button>';
-    const statusAction = user.role === 'owner' && owners.length <= 1 ? '<small class="user-note">Debe existir un propietario activo.</small>' : '<button type="button" class="button button-quiet user-status" data-user-id="' + escapeHtml(user.id) + '" data-disabled="' + (user.banned ? 'true' : 'false') + '">' + (user.banned ? 'Activar acceso' : 'Revocar acceso') + '</button>';
-    return '<article class="user-card ' + (user.banned ? 'is-disabled' : '') + '">' +
-      '<div class="user-avatar" aria-hidden="true">' + escapeHtml(initials) + '</div>' +
-      '<div class="user-identity"><div class="user-name-row"><strong>' + escapeHtml(user.name || user.email) + '</strong><span class="status-pill ' + (user.banned ? 'is-off' : user.mustChangePassword ? 'is-pending' : 'is-on') + '">' + statusLabel + '</span></div><span>' + escapeHtml(user.email) + '</span><small>Creado ' + escapeHtml(formatDate(user.createdAt)) + ' · ' + escapeHtml(accessLabel) + '</small></div>' +
-      '<div class="user-role-column"><span class="field-caption">Rol actual</span><select class="user-role" data-user-id="' + escapeHtml(user.id) + '" aria-label="Rol de ' + escapeHtml(user.email) + '"><option value="owner" ' + (user.role === 'owner' ? 'selected' : '') + '>Propietario</option><option value="editor" ' + (user.role === 'editor' ? 'selected' : '') + '>Editor</option><option value="viewer" ' + (user.role === 'viewer' ? 'selected' : '') + '>Visualizador</option></select><small>' + escapeHtml(role.description) + '</small></div>' +
-      '<div class="user-actions"><button type="button" class="button button-secondary user-password-reset user-password-reset-action" data-user-id="' + escapeHtml(user.id) + '" ' + (user.id === state.user?.id ? 'hidden' : '') + '>Restablecer contraseña</button>' + statusAction + (user.id === state.user?.id ? '<small class="user-note">Esta es tu cuenta.</small>' : '') + '</div>' +
-    '</article>';
+    const isSelf = user.id === state.user?.id;
+    const lastOwner = user.role === 'owner' && owners.length <= 1;
+    const statusDisabled = user.role === 'owner';
+    const deleteDisabled = isSelf || lastOwner;
+    const statusLabel = user.deletedAt ? 'Archivado' : user.banned ? 'Inactivo' : 'Activo';
+    return '<tr class="user-row ' + (user.banned ? 'is-disabled' : '') + '">' +
+      '<td class="user-identity"><strong>' + escapeHtml(user.email) + '</strong><small>' + escapeHtml(user.name || user.email) + '</small></td>' +
+      '<td><select class="user-role" data-user-id="' + escapeHtml(user.id) + '" aria-label="Rol de ' + escapeHtml(user.email) + '"><option value="owner" ' + (user.role === 'owner' ? 'selected' : '') + '>Administrador</option><option value="editor" ' + (user.role === 'editor' ? 'selected' : '') + '>Editor</option><option value="viewer" ' + (user.role === 'viewer' ? 'selected' : '') + '>Visualizador</option></select></td>' +
+      '<td><label class="user-toggle"><input type="checkbox" role="switch" class="user-status" data-user-id="' + escapeHtml(user.id) + '" ' + (!user.banned ? 'checked' : '') + (statusDisabled ? ' disabled' : '') + ' aria-label="' + statusLabel + ' para ' + escapeHtml(user.email) + '" /><span class="user-toggle-track" aria-hidden="true"></span><span>' + statusLabel + '</span></label></td>' +
+      '<td class="user-last-access">' + escapeHtml(formatDate(user.lastAccessAt)) + '</td>' +
+      '<td><div class="user-actions"><button type="button" class="icon-button user-permissions" data-user-id="' + escapeHtml(user.id) + '" title="Ver permisos" aria-label="Ver permisos de ' + escapeHtml(user.email) + '">☷</button><button type="button" class="icon-button user-password-reset" data-user-id="' + escapeHtml(user.id) + '" title="Restablecer contraseña" aria-label="Restablecer contraseña de ' + escapeHtml(user.email) + '" ' + (isSelf ? 'disabled' : '') + '>⚿</button><button type="button" class="icon-button is-danger user-delete" data-user-id="' + escapeHtml(user.id) + '" title="Archivar usuario" aria-label="Archivar usuario ' + escapeHtml(user.email) + '" ' + (deleteDisabled ? 'disabled' : '') + '>♧</button></div></td>' +
+    '</tr>';
   }).join('');
   $$('.user-role', list).forEach((select) => select.addEventListener('change', () => updateUserRole(select.dataset.userId, select.value, select)));
-  $$('.user-status', list).forEach((button) => button.addEventListener('click', () => updateUserStatus(button.dataset.userId, button.dataset.disabled === 'true')));
+  $$('.user-status', list).forEach((input) => input.addEventListener('change', () => updateUserStatus(input.dataset.userId, !input.checked, input)));
   $$('.user-password-reset', list).forEach((button) => button.addEventListener('click', () => resetUserPassword(button.dataset.userId)));
+  $$('.user-delete', list).forEach((button) => button.addEventListener('click', () => deleteUser(button.dataset.userId)));
+  $$('.user-permissions', list).forEach((button) => button.addEventListener('click', () => { $('#roles-panel')?.removeAttribute('hidden'); $('#roles-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }));
+  renderRecentAccesses();
+}
+
+function renderRecentAccesses() {
+  const list = $('#users-access-list');
+  if (!list) return;
+  const accesses = state.recentAccesses || [];
+  const roleLabel = { owner: 'Administrador principal', editor: 'Editor', viewer: 'Visualizador' };
+  const resultLabel = { success: '✓ Éxito', failed: '× Fallido', blocked: '⛔ Bloqueado' };
+  list.innerHTML = accesses.length ? accesses.map((item) => '<tr><td>' + escapeHtml(formatDate(item.at)) + '</td><td><strong>' + escapeHtml(item.email || 'Usuario no identificado') + '</strong>' + (item.name ? '<small>' + escapeHtml(item.name) + '</small>' : '') + '</td><td><span class="access-role">' + escapeHtml(roleLabel[item.role] || '—') + '</span></td><td><span class="access-result is-' + escapeHtml(item.result) + '">' + escapeHtml(resultLabel[item.result] || item.result) + '</span></td><td><code>' + escapeHtml(item.origin === 'account' ? 'Cuenta protegida' : item.origin === 'transport' ? 'Red protegida' : 'Protegido') + '</code></td></tr>').join('') : '<tr><td colspan="5"><div class="empty-state"><span>Aún no hay accesos registrados.</span></div></td></tr>';
 }
 
 const permissionMeta = {
@@ -758,7 +772,7 @@ async function resetUserPassword(id) {
 
 async function loadUsers() {
   if (state.user?.role !== 'owner') return;
-  try { const response = await api('/api/cms/users'); state.users = response.users; renderUsers(); } catch { notify('No se pudieron cargar los usuarios.', 'error'); }
+  try { const response = await api(`/api/cms/users${state.showArchivedUsers ? '?includeArchived=1' : ''}`); state.users = response.users || []; state.recentAccesses = response.recentAccesses || []; renderUsers(); $('#toggle-archived-users').textContent = state.showArchivedUsers ? 'Ocultar archivados' : 'Mostrar archivados'; } catch { notify('No se pudieron cargar los usuarios.', 'error'); }
 }
 
 async function updateUserRole(id, role, select) {
@@ -771,10 +785,16 @@ async function updateUserRole(id, role, select) {
   try { await api(`/api/cms/users/${encodeURIComponent(id)}/role`, { method: 'PATCH', body: { role } }); notify('Rol actualizado.'); await loadUsers(); if (id === state.user.id) { state.user.role = role; showApp(); } } catch (error) { select.value = state.users.find((user) => user.id === id)?.role || 'viewer'; notify(`No se actualizó el rol: ${error.message}`, 'error'); }
 }
 
-async function updateUserStatus(id, disabled) {
+async function updateUserStatus(id, disabled, input) {
   const user = state.users.find((candidate) => candidate.id === id);
-  if (!window.confirm((disabled ? 'Revocar' : 'Activar') + ' el acceso de ' + (user?.email || 'este usuario') + '?')) return;
-  try { await api(`/api/cms/users/${encodeURIComponent(id)}/status`, { method: 'POST', body: { disabled } }); notify(disabled ? 'Acceso revocado.' : 'Acceso activado.'); await loadUsers(); } catch (error) { notify(`No se actualizó el acceso: ${error.message}`, 'error'); }
+  if (!window.confirm((disabled ? 'Revocar' : 'Activar') + ' el acceso de ' + (user?.email || 'este usuario') + '?')) { if (input) input.checked = !disabled; return; }
+  try { await api(`/api/cms/users/${encodeURIComponent(id)}/status`, { method: 'POST', body: { disabled } }); notify(disabled ? 'Acceso revocado.' : 'Acceso activado.'); await loadUsers(); } catch (error) { if (input) input.checked = !disabled; notify(`No se actualizó el acceso: ${error.message}`, 'error'); }
+}
+
+async function deleteUser(id) {
+  const user = state.users.find((candidate) => candidate.id === id);
+  if (!user || !window.confirm(`Archivar el usuario ${user.email}? Se revocará su acceso y podrá restaurarse después.`)) return;
+  try { await api(`/api/cms/users/${encodeURIComponent(id)}`, { method: 'DELETE', body: {} }); notify('Usuario archivado.'); await loadUsers(); } catch (error) { notify(`No se pudo archivar el usuario: ${error.message}`, 'error'); }
 }
 
 async function uploadMedia(file) {
@@ -1197,6 +1217,7 @@ $('#logout-button').addEventListener('click', async () => {
   $('#save-settings').addEventListener('click', saveSettings);
   $('#settings-form').addEventListener('submit', (event) => { event.preventDefault(); saveSettings(); });
   $('#refresh-users').addEventListener('click', loadUsers);
+  $('#toggle-archived-users')?.addEventListener('click', () => { state.showArchivedUsers = !state.showArchivedUsers; loadUsers(); });
 $('#save-role-permissions')?.addEventListener('click', saveRolePermissions);
   $('#copy-temporary-password').addEventListener('click', async () => {
     const password = $('#temporary-password').textContent;

@@ -1192,6 +1192,7 @@ function cmsRoleForUser(user) {
 
 function userPayload(user) {
   const cmsAdmin = store.authAdmins.find((admin) => admin.userId === user.id);
+  const lastAccess = store.audit.find((item) => item.action === 'auth.login' && emailKey(item.actor) === emailKey(user.email));
   return {
     id: user.id,
     name: user.name,
@@ -1203,9 +1204,30 @@ function userPayload(user) {
     mustChangePassword: Boolean(cmsAdmin?.mustChangePassword),
     banned: Boolean(user.banned),
     banReason: user.banReason || '',
+    deletedAt: cmsAdmin?.deletedAt || null,
     createdAt: user.createdAt,
-    updatedAt: user.updatedAt
+    updatedAt: user.updatedAt,
+    lastAccessAt: lastAccess?.at || null
   };
+}
+
+function recentAccessPayload() {
+  return store.audit
+    .filter((item) => ['auth.login', 'auth.login.failed', 'auth.login.blocked'].includes(item.action))
+    .slice(0, 100)
+    .map((item) => {
+      const success = item.action === 'auth.login';
+      const blocked = item.action === 'auth.login.blocked' || item.detail?.blocked;
+      const admin = item.actor && store.authAdmins.find((candidate) => emailKey(candidate.email) === emailKey(item.actor));
+      return {
+        at: item.at,
+        email: success ? item.actor : '',
+        name: admin?.name || '',
+        role: admin?.role || item.detail?.role || '',
+        result: success ? 'success' : blocked ? 'blocked' : 'failed',
+        origin: item.detail?.scope || 'protected'
+      };
+    });
 }
 
 app.get('/api/cms/role-permissions', requireAuth, requireOwner, (_req, res) => { res.json({ permissions: store.rolePermissions, catalog: cmsPermissionCatalog }); });
@@ -1218,11 +1240,44 @@ app.get('/api/cms/users', requireAuth, requireOwner, async (req, res, next) => {
       query: { limit: 100, offset: 0, sortBy: 'createdAt', sortDirection: 'desc' },
       headers: fromNodeHeaders(req.headers)
     });
-    const users = (result?.users || []).filter((user) => cmsRoleForUser(user)).map(userPayload);
-    res.json({ users, total: users.length });
+    const includeArchived = String(req.query?.includeArchived || '') === '1';
+    const users = (result?.users || []).filter((user) => cmsRoleForUser(user) && (includeArchived || !store.authAdmins.find((admin) => admin.userId === user.id)?.deletedAt)).map(userPayload);
+    res.json({ users, total: users.length, recentAccesses: recentAccessPayload() });
   } catch (error) {
     next(error);
   }
+});
+
+app.delete('/api/cms/users/:id', requireAuth, requireOwner, requireCsrf, async (req, res, next) => {
+  try {
+    const target = cmsAdminRecordForId(req.params.id);
+    if (!target?.userId) return res.status(404).json({ error: 'USER_NOT_FOUND' });
+    if (target.userId === req.cmsUser.id) return res.status(409).json({ error: 'CURRENT_USER_CANNOT_BE_DELETED' });
+    if (target.role === 'owner' && store.authAdmins.filter((admin) => admin.role === 'owner' && !admin.banned).length < 2) return res.status(409).json({ error: 'LAST_OWNER' });
+    await auth.api.banUser({ body: { userId: target.userId, banReason: 'Cuenta archivada desde el CMS' }, headers: fromNodeHeaders(req.headers) });
+    target.banned = true;
+    target.deletedAt = now();
+    target.banReason = 'Cuenta archivada desde el CMS';
+    target.updatedAt = now();
+    audit('auth.user.delete', req.cmsUser, { userId: target.userId });
+    await writeStore();
+    res.json({ ok: true });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/cms/users/:id/restore', requireAuth, requireOwner, requireCsrf, async (req, res, next) => {
+  try {
+    const target = cmsAdminRecordForId(req.params.id);
+    if (!target?.userId) return res.status(404).json({ error: 'USER_NOT_FOUND' });
+    await auth.api.unbanUser({ body: { userId: target.userId }, headers: fromNodeHeaders(req.headers) });
+    target.banned = false;
+    target.deletedAt = null;
+    target.banReason = '';
+    target.updatedAt = now();
+    audit('auth.user.restore', req.cmsUser, { userId: target.userId });
+    await writeStore();
+    res.json({ ok: true });
+  } catch (error) { next(error); }
 });
 
 app.post('/api/cms/users', requireAuth, requireOwner, requireCsrf, async (req, res, next) => {
@@ -1300,6 +1355,7 @@ app.post('/api/cms/users/:id/status', requireAuth, requireOwner, requireCsrf, as
       : await auth.api.unbanUser({ body: { userId: target.userId }, headers: fromNodeHeaders(req.headers) });
     target.banned = disabled;
     target.banReason = disabled ? 'Acceso revocado desde el CMS' : '';
+    if (!disabled) target.deletedAt = null;
     target.updatedAt = now();
     audit(disabled ? 'auth.user.disable' : 'auth.user.enable', req.cmsUser, { userId: target.userId || target.id });
     writeStore();
