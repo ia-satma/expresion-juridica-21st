@@ -326,12 +326,13 @@ body {
 #users-view .permission-option strong { color: var(--navy); font-size: 10px; }
 #users-view .permission-option small { color: var(--muted); font-size: 9px; line-height: 1.3; }
 #users-view .users-table-wrap, #users-view .access-table-wrap { overflow-x: auto; padding: 0 22px 22px; }
-#users-view .users-table, #users-view .access-table { width: 100%; min-width: 760px; border-collapse: collapse; table-layout: fixed; }
+#users-view .users-table, #users-view .access-table { width: 100%; min-width: 820px; border-collapse: collapse; table-layout: fixed; }
 #users-view .users-table th, #users-view .access-table th { padding: 13px 15px; border-bottom: 1px solid var(--rule); color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-align: left; text-transform: uppercase; }
 #users-view .users-table td, #users-view .access-table td { padding: 13px 15px; border-bottom: 1px solid var(--rule); vertical-align: middle; }
 #users-view .users-table .user-row { display: table-row; }
-#users-view .users-table th:nth-child(1) { width: 27%; } #users-view .users-table th:nth-child(2) { width: 27%; } #users-view .users-table th:nth-child(3) { width: 15%; } #users-view .users-table th:nth-child(4) { width: 18%; } #users-view .users-table th:nth-child(5) { width: 13%; }
+#users-view .users-table th:nth-child(1) { width: 26%; } #users-view .users-table th:nth-child(2) { width: 23%; } #users-view .users-table th:nth-child(3) { width: 17%; } #users-view .users-table th:nth-child(4) { width: 18%; } #users-view .users-table th:nth-child(5) { width: 16%; }
 #users-view .users-table tbody tr:last-child td, #users-view .access-table tbody tr:last-child td { border-bottom: 0; }
+#users-view .user-row:hover td { background: #fcfbf8; }
 #users-view .user-row.is-disabled { opacity: .62; }
 #users-view .user-identity strong, #users-view .access-table td strong { display: block; color: var(--navy); font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #users-view .user-identity small, #users-view .access-table td small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -344,11 +345,13 @@ body {
 #users-view .user-toggle input:checked + .user-toggle-track::after { transform: translateX(21px); }
 #users-view .user-toggle input:disabled + .user-toggle-track { opacity: .55; }
 #users-view .user-last-access { color: var(--muted); font-size: 12px; white-space: nowrap; }
-#users-view .user-actions { display: flex; align-items: center; justify-content: flex-start; gap: 13px; }
-#users-view .icon-button { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--navy); font-size: 18px; line-height: 1; cursor: pointer; }
-#users-view .icon-button:hover { background: #f3f4f7; }
+#users-view .user-actions-cell { white-space: nowrap; }
+#users-view .user-actions { display: flex; flex-wrap: nowrap; align-items: center; justify-content: flex-start; gap: 4px; white-space: nowrap; }
+#users-view .icon-button { display: inline-grid; place-items: center; width: 30px; height: 30px; flex: 0 0 30px; padding: 0; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--navy); line-height: 1; cursor: pointer; }
+#users-view .icon-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+#users-view .icon-button:hover { border-color: var(--border); background: #f3f4f7; }
 #users-view .icon-button:disabled { opacity: .35; cursor: not-allowed; }
-#users-view .icon-button.is-danger { color: #d51e32; }
+#users-view .icon-button.is-danger { color: #c01b35; }
 #users-view .access-panel { grid-column: 1 / -1; }
 #users-view .access-table { min-width: 760px; }
 #users-view .access-table th:nth-child(1) { width: 23%; } #users-view .access-table th:nth-child(2) { width: 27%; } #users-view .access-table th:nth-child(3) { width: 22%; } #users-view .access-table th:nth-child(4) { width: 15%; } #users-view .access-table th:nth-child(5) { width: 13%; }

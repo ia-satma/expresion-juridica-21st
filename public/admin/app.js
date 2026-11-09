@@ -641,6 +641,15 @@ async function saveSettings() {
   try { const response = await api('/api/cms/settings', { method: 'PUT', body: readSettingsForm() }); fillSettings(response.settings); notify('Ajustes guardados y conectados al sitio.'); } catch (error) { notify(`No se guardaron los ajustes: ${error.message}`, 'error'); }
 }
 
+function userActionIcon(kind) {
+  const icons = {
+    permissions: '<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/>',
+    password: '<circle cx="8.5" cy="15.5" r="3.5"/><path d="m11.5 12.5 7-7 2 2-2 2 1.5 1.5-2 2-1.5-1.5-2 2"/>',
+    archive: '<path d="M5 7h14M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v6m4-6v6"/>'
+  };
+  return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' + icons[kind] + '</svg>';
+}
+
 function renderUsers() {
   const list = $('#users-list');
   if (!list) return;
@@ -666,7 +675,7 @@ function renderUsers() {
       '<td><select class="user-role" data-user-id="' + escapeHtml(user.id) + '" aria-label="Rol de ' + escapeHtml(user.email) + '"><option value="owner" ' + (user.role === 'owner' ? 'selected' : '') + '>Administrador</option><option value="editor" ' + (user.role === 'editor' ? 'selected' : '') + '>Editor</option><option value="viewer" ' + (user.role === 'viewer' ? 'selected' : '') + '>Visualizador</option></select></td>' +
       '<td><label class="user-toggle"><input type="checkbox" role="switch" class="user-status" data-user-id="' + escapeHtml(user.id) + '" ' + (!user.banned ? 'checked' : '') + (statusDisabled ? ' disabled' : '') + ' aria-label="' + statusLabel + ' para ' + escapeHtml(user.email) + '" /><span class="user-toggle-track" aria-hidden="true"></span><span>' + statusLabel + '</span></label></td>' +
       '<td class="user-last-access">' + escapeHtml(formatDate(user.lastAccessAt)) + '</td>' +
-      '<td><div class="user-actions"><button type="button" class="icon-button user-permissions" data-user-id="' + escapeHtml(user.id) + '" title="Ver permisos" aria-label="Ver permisos de ' + escapeHtml(user.email) + '">☷</button><button type="button" class="icon-button user-password-reset" data-user-id="' + escapeHtml(user.id) + '" title="Restablecer contraseña" aria-label="Restablecer contraseña de ' + escapeHtml(user.email) + '" ' + (isSelf ? 'disabled' : '') + '>⚿</button><button type="button" class="icon-button is-danger user-delete" data-user-id="' + escapeHtml(user.id) + '" title="Archivar usuario" aria-label="Archivar usuario ' + escapeHtml(user.email) + '" ' + (deleteDisabled ? 'disabled' : '') + '>♧</button></div></td>' +
+      '<td class="user-actions-cell"><div class="user-actions"><button type="button" class="icon-button user-permissions" data-user-id="' + escapeHtml(user.id) + '" title="Ver permisos" aria-label="Ver permisos de ' + escapeHtml(user.email) + '">' + userActionIcon('permissions') + '</button><button type="button" class="icon-button user-password-reset" data-user-id="' + escapeHtml(user.id) + '" title="Restablecer contraseña" aria-label="Restablecer contraseña de ' + escapeHtml(user.email) + '" ' + (isSelf ? 'disabled' : '') + '>' + userActionIcon('password') + '</button><button type="button" class="icon-button is-danger user-delete" data-user-id="' + escapeHtml(user.id) + '" title="Archivar usuario" aria-label="Archivar usuario ' + escapeHtml(user.email) + '" ' + (deleteDisabled ? 'disabled' : '') + '>' + userActionIcon('archive') + '</button></div></td>' +
     '</tr>';
   }).join('');
   $$('.user-role', list).forEach((select) => select.addEventListener('change', () => updateUserRole(select.dataset.userId, select.value, select)));
