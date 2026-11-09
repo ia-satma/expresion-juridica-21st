@@ -15,14 +15,4 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-REPLIT_OBJECT_STORAGE_BUCKET_ID = "replit-objstore-4f9d488b-7850-4525-b68a-bd572fbb1d10"
 CMS_DATA_SCOPE = "production"
-
-[objectStorage]
-defaultBucketID = "replit-objstore-4f9d488b-7850-4525-b68a-bd572fbb1d10"
-
-# Versión de prueba: que ningún buscador la indexe.
-[[deployment.responseHeaders]]
-path = "/*"
-name = "X-Robots-Tag"
-value = "noindex, nofollow"
