@@ -518,8 +518,6 @@ function activityLabel(action) {
     'auth.user.enable': 'Acceso activado',
     'auth.user.delete': 'Usuario archivado',
     'auth.user.restore': 'Usuario restaurado',
-    'auth.user.delete': 'Usuario eliminado',
-    'auth.user.restore': 'Usuario restaurado',
     'auth.user.password.reset': 'Contraseña temporal generada',
     'auth.user.password.change': 'Contraseña actualizada',
     'auth.password.change': 'Contraseña actualizada',
@@ -660,7 +658,7 @@ function renderUsers() {
   list.innerHTML = state.users.map((user) => {
     const isSelf = user.id === state.user?.id;
     const lastOwner = user.role === 'owner' && owners.length <= 1;
-    const statusDisabled = user.role === 'owner';
+    const statusDisabled = user.role === 'owner' && !user.deletedAt;
     const deleteDisabled = isSelf || lastOwner;
     const statusLabel = user.deletedAt ? 'Archivado' : user.banned ? 'Inactivo' : 'Activo';
     return '<tr class="user-row ' + (user.banned ? 'is-disabled' : '') + '">' +
