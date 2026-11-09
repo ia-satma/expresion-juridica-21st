@@ -64,7 +64,7 @@ El panel edita contenido por sección y guarda el cambio con confirmación Antes
 
 Usuarios y accesos ahora muestran una tabla con correo/usuario, rol, estado, último acceso y acciones. Incluye cambio de rol, switch de acceso, restablecimiento de contraseña temporal, panel de permisos e historial de accesos recientes con resultado y origen protegido. La contraseña mínima sigue siendo de 8 caracteres.
 
-La tabla conserva filas nativas de HTML (`display: table-row`); una regla antigua de `.user-row` que la convertía en flex provocaba que las celdas se apilaran. El ajuste quedó en `6453961` y fue republicado en Replit.
+La tabla conserva filas nativas de HTML (`display: table-row`); una regla antigua de `.user-row` que la convertía en flex provocaba que las celdas se apilaran. El ajuste quedó en `6453961` y fue republicado en Replit. Después se refinó la composición con iconos SVG accesibles, acciones sin wrap, proporciones de columna ajustadas, hover de fila y tamaño compacto para que las tres acciones permanezcan en una sola línea (`9165a7f`, `2fbebc5`).
 
 El archivado de usuarios es recuperable. Archivar revoca sesiones y oculta la cuenta de la lista normal. `Mostrar archivados` permite restaurarla. No se borra permanentemente una cuenta desde este flujo. El propietario actual no puede archivarse y el sistema protege la existencia de un propietario activo.
 
@@ -93,7 +93,7 @@ Controles verificados en local y Replit:
 - `node scripts/check-documents.mjs`
 - Sintaxis de `server/index.mjs` y `public/admin/app.js`.
 
-Todos pasan en el corte actual. Los commits de esta etapa son `e5de34c` (membrete y pies IA), `dd19ce1` (apertura y cierre), `a041899` (interruptor), `93c3b66` (metadata), `86071d2` (seguridad y dependencias), `13b4107` (bundle Tiptap), `3dc7423` (panel de usuarios), `ac143d7` (restauración de propietarios archivados), `6453961` (fila nativa de la tabla de usuarios), `6136fe4` (contexto canónico) y `38da2aa` (documentación operativa).
+Todos pasan en el corte actual. Los commits de esta etapa son `e5de34c` (membrete y pies IA), `dd19ce1` (apertura y cierre), `a041899` (interruptor), `93c3b66` (metadata), `86071d2` (seguridad y dependencias), `13b4107` (bundle Tiptap), `3dc7423` (panel de usuarios), `ac143d7` (restauración de propietarios archivados), `6453961` (fila nativa de la tabla de usuarios), `9165a7f` y `2fbebc5` (refinamiento visual de usuarios), `6136fe4` (contexto canónico) y `38da2aa` (documentación operativa).
 
 ## Continuidad
 
