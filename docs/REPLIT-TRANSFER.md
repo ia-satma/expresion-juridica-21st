@@ -11,6 +11,8 @@ La configuración base no añade `X-Robots-Tag: noindex` para que la publicació
 3. Comprueba que `.replit` mantiene `npm start`, Cloud Run y el puerto 3000.
 4. Activa App Storage en el nuevo proyecto. El código usa el bucket predeterminado de esa cuenta cuando `REPLIT_OBJECT_STORAGE_BUCKET_ID` y `DEFAULT_OBJECT_STORAGE_BUCKET_ID` quedan vacíos. Si el cliente crea un bucket nombrado, guarda su identificador en Secrets o Configuration de Replit, nunca en Git.
 
+En el workspace de desarrollo usa `CMS_DATA_SCOPE=development`. En el Deployment usa `CMS_DATA_SCOPE=production`. La configuración compartida de Replit debe revisarse después de importar el proyecto para que una prueba local no escriba datos de producción.
+
 ## Secrets y configuración
 
 Configura estos valores en Secrets o Configuration de Replit.
