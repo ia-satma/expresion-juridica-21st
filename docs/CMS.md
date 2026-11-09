@@ -30,22 +30,28 @@ Los datos se separan por `CMS_DATA_SCOPE`: usa `development` en el workspace y `
 
 - `GET /admin/` abre el panel.
 - `Páginas` inventaría todas las rutas HTML y sus campos editables.
-- Cada cambio queda como borrador en `data/cms.json`.
-- `Publicar cambios` copia el snapshot al estado público.
-- `Vista previa` añade `?cms_preview=1` y sólo muestra el borrador a una sesión autorizada.
+- Cada edición se muestra como Antes/Después y se guarda al aceptar, con aplicación pública inmediata.
+- No hay un paso separado de «Publicar cambios» para el contenido del cliente.
+- `Vista previa` añade `?cms_preview=1` y sólo muestra el estado de revisión a una sesión autorizada.
 - `Versiones` permite restaurar un snapshot como borrador.
 
 `Ajustes` centraliza el nombre y descripción SEO, URL canónica, indexación, token de Google Search Console, Google Analytics, consentimiento de cookies, datos GEO y visibilidad de enlaces del menú. Los cambios se guardan en `data/cms.json` y se inyectan en cada respuesta HTML publicada.
 
 El inventario incluye HTML de texto, títulos, metadatos, enlaces, `href`, `src`, `srcset`, posters, `alt`, `aria-label`, placeholders y otros atributos visibles. Los campos HTML se sanitizan para retirar scripts, estilos y handlers inline.
 
+## Usuarios y accesos
+
+El apartado de usuarios es una tabla con correo/usuario, rol, estado, último acceso y acciones. El propietario puede cambiar roles, activar o revocar acceso, restablecer contraseñas temporales, consultar permisos y revisar accesos recientes con resultado y origen protegido. La contraseña mínima es de 8 caracteres.
+
+Archivar un usuario revoca sus sesiones y lo oculta de la lista normal. «Mostrar archivados» permite restaurarlo. El flujo no elimina cuentas de forma permanente y protege al propietario actual y la existencia de un propietario activo.
+
 ## Agente de presentaciones
 
-En el menú lateral, `Presentaciones IA` está debajo de `Firmas de correo`. También admite el enlace directo `/admin/#presentations`. Crea una presentación a partir de un tema y notas de apoyo, con contenido de `gpt-6.1-sol` y una imagen de portada opcional de `gpt-image-2`. El resultado incluye PPTX editable, PDF y PNG por diapositiva, además de la imagen de portada por separado. Los archivos se guardan en `data/<entorno>/generated-presentations` y en App Storage cuando está conectado.
+En el menú lateral, `Presentaciones IA` está debajo de `Firmas de correo`. También admite el enlace directo `/admin/#presentations`. Crea una presentación a partir de un tema y notas de apoyo, con contenido de `gpt-6.1-sol` y una imagen de portada opcional de `gpt-image-2.5-sunburst`. Las llamadas de texto solicitan `service_tier: "fast"`. El resultado incluye PPTX editable, PDF y PNG por diapositiva, además de la imagen de portada por separado. Los archivos se guardan en `data/<entorno>/generated-presentations` y en App Storage cuando está conectado.
 
 Para activar OpenAI, agrega `OPENAI_API_KEY` en Secrets de Replit y republica. De forma opcional puedes definir `OPENAI_PRESENTATION_MODEL`, `OPENAI_IMAGE_MODEL` y `OPENAI_BASE_URL`. El panel muestra los modelos configurados. Si todavía no hay clave, permite generar un archivo de prueba marcado sin IA. Si la API falla, muestra el error sin sustituir el modelo solicitado por otro ni presentar una plantilla como contenido de IA.
 
-El acceso al agente requiere una sesión del CMS; generar archivos requiere rol `owner` o `editor`. El historial es privado y las descargas pasan por rutas autenticadas. La revisión humana ocurre antes de compartir el PPTX, PDF o las imágenes.
+El acceso al agente requiere una sesión del CMS; generar archivos requiere rol `owner` o `editor`. El historial es privado y las descargas pasan por rutas autenticadas. La revisión humana ocurre antes de compartir el PPTX, PDF o las imágenes. Las nuevas presentaciones pueden incluir las imágenes institucionales de apertura y cierre con un interruptor activado por defecto. El número elegido representa contenido y las dos láminas se agregan solo cuando el interruptor está activo.
 
 ## Medios
 

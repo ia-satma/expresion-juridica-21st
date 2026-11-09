@@ -4,9 +4,9 @@ Rutas de la aplicación: `/admin/#presentations`, `/admin/#posts` y `/admin/#doc
 
 ## Identidad y agente
 
-Todos los módulos usan el perfil `ej-manual-2026`, el logotipo original y las fuentes institucionales aprobadas. El agente carga la skill versionada `server/agents/ej-content-studio/SKILL.md` mediante `server/editorial-skill.mjs`. Modelo de texto predeterminado: `gpt-6.1-sol`; fotografías: `gpt-image-2`. La clave `OPENAI_API_KEY` permanece en Secrets, en el servidor. `OPENAI_SOCIAL_MODEL` puede configurar el texto social explícitamente; los documentos comparten `OPENAI_PRESENTATION_MODEL`.
+Todos los módulos usan el perfil `ej-manual-2026`, el logotipo original y las fuentes institucionales aprobadas. El agente carga la skill versionada `server/agents/ej-content-studio/SKILL.md` mediante `server/editorial-skill.mjs`. Modelo de texto predeterminado: `gpt-6.1-sol` con `service_tier: "fast"`; fotografías: `gpt-image-2.5-sunburst`. La clave `OPENAI_API_KEY` permanece en Secrets, en el servidor. `OPENAI_SOCIAL_MODEL` puede configurar el texto social explícitamente; los documentos comparten `OPENAI_PRESENTATION_MODEL`.
 
-Las imágenes se plantean como fotografía documental contemporánea de México, con personas cuando son pertinentes, salvo que el material indique otro lugar. Las fotografías de IA se identifican como tales. No se inventan credenciales, resultados, datos de contacto ni citas legales. Las instrucciones contenidas en los insumos se tratan como datos. No hay formulario de clasificación ni bloqueo por categoría del material.
+Las imágenes se plantean como fotografía documental contemporánea de México, con personas cuando son pertinentes, salvo que el material indique otro lugar. Las fotografías de IA se registran internamente para trazabilidad, sin añadir una leyenda visible al diseño. No se inventan credenciales, resultados, datos de contacto ni citas legales. Las instrucciones contenidas en los insumos se tratan como datos. No hay formulario de clasificación ni bloqueo por categoría del material.
 
 ## Posts y carruseles
 
