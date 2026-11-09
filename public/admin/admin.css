@@ -329,6 +329,7 @@ body {
 #users-view .users-table, #users-view .access-table { width: 100%; min-width: 760px; border-collapse: collapse; table-layout: fixed; }
 #users-view .users-table th, #users-view .access-table th { padding: 13px 15px; border-bottom: 1px solid var(--rule); color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-align: left; text-transform: uppercase; }
 #users-view .users-table td, #users-view .access-table td { padding: 13px 15px; border-bottom: 1px solid var(--rule); vertical-align: middle; }
+#users-view .users-table .user-row { display: table-row; }
 #users-view .users-table th:nth-child(1) { width: 27%; } #users-view .users-table th:nth-child(2) { width: 27%; } #users-view .users-table th:nth-child(3) { width: 15%; } #users-view .users-table th:nth-child(4) { width: 18%; } #users-view .users-table th:nth-child(5) { width: 13%; }
 #users-view .users-table tbody tr:last-child td, #users-view .access-table tbody tr:last-child td { border-bottom: 0; }
 #users-view .user-row.is-disabled { opacity: .62; }
