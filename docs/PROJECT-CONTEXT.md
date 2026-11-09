@@ -9,7 +9,7 @@ Actualizado el 2026-11-09. Este documento reúne las decisiones vigentes del sit
 - Repositorio: https://github.com/ia-satma/expresion-juridica-21st.git, rama `main`.
 - Workspace local: `/Volumes/alejandro /JHH WEB PAGES`.
 - Replit: `https://replit.com/@iadurezza/expresion-juridica-21st`.
-- El último despliegue del panel de usuarios está publicado y aparece como `Live` en Replit. El repositorio conserva la documentación vigente en `docs/PROJECT-CONTEXT.md`, con `38da2aa` como último commit.
+- El último despliegue del panel de usuarios está publicado y aparece como `Live` en Replit. El repositorio conserva la documentación vigente en `docs/PROJECT-CONTEXT.md` y la rama `main` está alineada con `origin/main`.
 - Los archivos originales proporcionados por el cliente (`1.jpeg`, `2.jpeg`, `Hoja membretada.pdf` y `documentos /`) permanecen fuera de los commits de código.
 
 ## Marca y contacto
