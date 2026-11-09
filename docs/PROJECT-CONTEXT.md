@@ -9,7 +9,7 @@ Actualizado el 2026-11-09. Este documento reúne las decisiones vigentes del sit
 - Repositorio: https://github.com/ia-satma/expresion-juridica-21st.git, rama `main`.
 - Workspace local: `/Volumes/alejandro /JHH WEB PAGES`.
 - Replit: `https://replit.com/@iadurezza/expresion-juridica-21st`.
-- El último despliegue del panel de usuarios está publicado y aparece como `Live` en Replit.
+- El último despliegue del panel de usuarios está publicado y aparece como `Live` en Replit. El repositorio conserva la documentación vigente en `docs/PROJECT-CONTEXT.md`, con `38da2aa` como último commit.
 - Los archivos originales proporcionados por el cliente (`1.jpeg`, `2.jpeg`, `Hoja membretada.pdf` y `documentos /`) permanecen fuera de los commits de código.
 
 ## Marca y contacto
@@ -91,7 +91,7 @@ Controles verificados en local y Replit:
 - `node scripts/check-documents.mjs`
 - Sintaxis de `server/index.mjs` y `public/admin/app.js`.
 
-Todos pasan en el corte actual. Los commits de esta etapa son `e5de34c` (membrete y pies IA), `dd19ce1` (apertura y cierre), `a041899` (interruptor), `93c3b66` (metadata), `86071d2` (seguridad y dependencias), `13b4107` (bundle Tiptap), `3dc7423` (panel de usuarios) y `ac143d7` (restauración de propietarios archivados).
+Todos pasan en el corte actual. Los commits de esta etapa son `e5de34c` (membrete y pies IA), `dd19ce1` (apertura y cierre), `a041899` (interruptor), `93c3b66` (metadata), `86071d2` (seguridad y dependencias), `13b4107` (bundle Tiptap), `3dc7423` (panel de usuarios), `ac143d7` (restauración de propietarios archivados), `6136fe4` (contexto canónico) y `38da2aa` (documentación operativa).
 
 ## Continuidad
 
