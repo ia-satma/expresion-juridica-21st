@@ -6,7 +6,8 @@ import { DATA_DIR, DATA_SCOPE } from './data-paths.mjs';
 import { appStorageEnabled, uploadFile, downloadFile } from './app-storage.mjs';
 
 const ROOT = path.join(DATA_DIR, 'studio-state');
-const client = appStorageEnabled ? new Client(process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID ? { bucketId: process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID } : undefined) : null;
+const bucketId = process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID || process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+const client = appStorageEnabled ? new Client(bucketId ? { bucketId } : undefined) : null;
 function keyFor(collection, id) {
   if (!['posts', 'documents', 'presentations', 'jobs', 'owners', 'submissions'].includes(collection) || !/^[a-z0-9-]{16,80}$/.test(id)) throw new Error('STUDIO_STATE_KEY_INVALID');
   return `studio-state/${collection}/${id}.json`;

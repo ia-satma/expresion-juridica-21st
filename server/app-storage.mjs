@@ -8,7 +8,8 @@ if (isReplit) {
   try {
     // Replit exposes the default bucket automatically. A bucket ID can be
     // supplied when the project has an explicitly named App Storage bucket.
-    client = new Client(process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID ? { bucketId: process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID } : undefined);
+    const bucketId = process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID || process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+    client = new Client(bucketId ? { bucketId } : undefined);
   } catch (error) {
     console.error('[cms-storage] no se pudo inicializar Replit App Storage', error.message);
   }

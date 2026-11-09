@@ -62,7 +62,7 @@ El editor Tiptap permite títulos, subtítulos, texto, listas, citas, negritas, 
 
 El panel edita contenido por sección y guarda el cambio con confirmación Antes/Después. No existe un paso separado de publicar cambios para estas ediciones.
 
-Usuarios y accesos ahora muestran una tabla con correo/usuario, rol, estado, último acceso y acciones. Incluye cambio de rol, switch de acceso, restablecimiento de contraseña temporal, panel de permisos e historial de accesos recientes con resultado y origen protegido. La contraseña mínima sigue siendo de 8 caracteres.
+Usuarios y accesos ahora muestran una tabla con correo/usuario, rol, estado, último acceso y acciones. Incluye cambio de rol, switch de acceso, restablecimiento de contraseña temporal y panel de permisos. El historial de accesos recientes, con resultado y origen protegido, sólo se muestra al rol Administrador (`owner`) y el endpoint está protegido con `requireOwner`. La contraseña mínima sigue siendo de 8 caracteres.
 
 La tabla conserva filas nativas de HTML (`display: table-row`); una regla antigua de `.user-row` que la convertía en flex provocaba que las celdas se apilaran. El ajuste quedó en `6453961` y fue republicado en Replit. Después se refinó la composición con iconos SVG accesibles, acciones sin wrap, proporciones de columna ajustadas, hover de fila y tamaño compacto para que las tres acciones permanezcan en una sola línea (`9165a7f`, `2fbebc5`).
 
@@ -98,3 +98,5 @@ Todos pasan en el corte actual. Los commits de esta etapa son `e5de34c` (membret
 ## Continuidad
 
 Antes de sincronizar cambios completos desde GitHub a Replit, conservar el `server/index.mjs` remoto si contiene personalizaciones de autenticación y persistencia. Aplicar parches de ancla exacta y ejecutar las regresiones. No incluir Secrets, bases SQLite, JSON de producción, TTF/EOT privados ni los archivos de referencia del cliente en commits de código.
+
+El procedimiento de cambio de cuenta está en [`docs/REPLIT-TRANSFER.md`](./REPLIT-TRANSFER.md). El preflight reproducible es `node scripts/check-replit-transfer.mjs`; cubre Node, Cloud Run, scope de datos, Secrets, App Storage y exclusión de datos de producción.

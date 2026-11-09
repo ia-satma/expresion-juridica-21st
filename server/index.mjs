@@ -32,6 +32,7 @@ const ROOT = process.cwd();
 const PORT = Number(process.env.PORT || 3000);
 const ADMIN_DIR = path.join(ROOT, 'public', 'admin');
 const OWNER_EMAIL = String(process.env.CMS_OWNER_EMAIL || 'ia@satma.mx').trim().toLowerCase();
+const DEFAULT_CANONICAL_BASE_URL = String(process.env.CMS_CANONICAL_BASE_URL || process.env.REPLIT_DEPLOYMENT_URL || process.env.BETTER_AUTH_URL || 'https://expresion-juridica-21-st.replit.app').trim().replace(/\/$/, '');
 const PRESENTATIONS_DIR = path.resolve(DATA_DIR, 'generated-presentations');
 const PRESENTATION_INPUTS_DIR = path.resolve(DATA_DIR, 'presentation-inputs');
 
@@ -44,7 +45,7 @@ const defaultSettings = () => ({
   siteName: 'Expresión Jurídica Consultores',
   siteDescription: 'Asesoría y defensa jurídica especializada para personas, empresas e instituciones.',
   defaultLocale: 'es-MX',
-  canonicalBaseUrl: 'https://expresion-juridica-21-st.replit.app',
+  canonicalBaseUrl: DEFAULT_CANONICAL_BASE_URL,
   indexingEnabled: true,
   searchConsoleVerification: '',
   analytics: {

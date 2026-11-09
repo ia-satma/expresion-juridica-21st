@@ -41,7 +41,7 @@ El inventario incluye HTML de texto, títulos, metadatos, enlaces, `href`, `src`
 
 ## Usuarios y accesos
 
-El apartado de usuarios es una tabla con correo/usuario, rol, estado, último acceso y acciones. El propietario puede cambiar roles, activar o revocar acceso, restablecer contraseñas temporales, consultar permisos y revisar accesos recientes con resultado y origen protegido. La contraseña mínima es de 8 caracteres.
+El apartado de usuarios es una tabla con correo/usuario, rol, estado, último acceso y acciones. El propietario puede cambiar roles, activar o revocar acceso, restablecer contraseñas temporales y consultar permisos. El historial de accesos recientes, incluidos resultado y origen protegido, sólo se muestra al rol Administrador (`owner`) y el endpoint está protegido con `requireOwner`. La contraseña mínima es de 8 caracteres.
 
 Archivar un usuario revoca sus sesiones y lo oculta de la lista normal. «Mostrar archivados» permite restaurarlo. El flujo no elimina cuentas de forma permanente y protege al propietario actual y la existencia de un propietario activo.
 

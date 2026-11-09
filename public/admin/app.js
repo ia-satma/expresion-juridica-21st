@@ -689,6 +689,10 @@ function renderUsers() {
 function renderRecentAccesses() {
   const list = $('#users-access-list');
   if (!list) return;
+  const panel = list.closest('.access-panel');
+  const owner = state.user?.role === 'owner';
+  if (panel) panel.hidden = !owner;
+  if (!owner) { list.replaceChildren(); return; }
   const accesses = state.recentAccesses || [];
   const roleLabel = { owner: 'Administrador principal', editor: 'Editor', viewer: 'Visualizador' };
   const resultLabel = { success: '✓ Éxito', failed: '× Fallido', blocked: '⛔ Bloqueado' };
