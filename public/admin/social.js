@@ -311,7 +311,9 @@ export function createSocialStudio({ api, state, notify, escapeHtml: h, formatDa
       for (;;) {
         const { job } = await api(`/api/cms/posts/jobs/${encodeURIComponent(id)}`);
         progress.update(job);
-        if (job.state === 'failed') throw new Error(job.error || 'No se pudo completar el trabajo.');
+        if (job.state === 'failed') {
+          throw Object.assign(new Error(job.error || 'POST_GENERATION_FAILED'), { detail: job.detail });
+        }
         if (job.state === 'complete') return job.result;
         await new Promise(resolve => setTimeout(resolve, 1800));
       }
@@ -324,9 +326,9 @@ export function createSocialStudio({ api, state, notify, escapeHtml: h, formatDa
       $('#posts-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
       notify(downloadsReady(record)?'Diseños y copy guardados.':'Contenido guardado. Falta ajustar o revisar el diseño.'); return record;
     } catch (failure) {
-      const message = failure.message === 'POST_JOB_INTERRUPTED' ? 'La generación se interrumpió. Puedes volver a intentarlo.' : failure.message?.startsWith('OPENAI_') ? 'OpenAI no pudo completar el trabajo. Revisa los créditos y el acceso a los modelos e inténtalo de nuevo.' : failure.detail || failure.message;
-      error(message || 'No se pudo completar el trabajo.'); notify(message || 'No se pudo completar el trabajo.', 'error');
-      progress.fail(message||'No se pudo completar el trabajo.');
+      const message = failure.detail || 'No se pudo completar el trabajo. Inténtalo de nuevo.';
+      error(message); notify(message, 'error');
+      progress.fail(message);
     } finally { studio.busy = false; studio.polling = null; syncButtons(); }
   }
   async function load() {

@@ -1,14 +1,21 @@
 import crypto from 'node:crypto';
 import { readStudioState, writeStudioState } from './studio-state.mjs';
-import { safeErrorCode, safeLog } from './security-logging.mjs';
+import { publicFailure, safeLog } from './security-logging.mjs';
 
 // Metadata and job pointers live in App Storage, so a refresh or another
 // deployment replica can retrieve the same result. No source text in pointers.
-export function createStudioJobs(namespace, serialize = value => value) {
+export function createStudioJobs(namespace, serialize = value => value, failureCode = 'DOCUMENT_GENERATION_FAILED') {
   const jobs = new Map();
   const owner = req => String(req.cmsUser.id || req.cmsUser.email);
   const ownerId = req => crypto.createHash('sha256').update(`${namespace}:${owner(req)}`).digest('hex');
-  const payload = job => ({ id: job.id, state: job.state, stage:job.stage, created:job.created, message: job.message, completed: job.completed, total: job.total, result: job.result || null, error: job.error ? safeErrorCode(job.error, 'DOCUMENT_GENERATION_FAILED') : null });
+  const payload = job => {
+    const failure = job.error ? publicFailure(job.error, failureCode) : null;
+    return {
+      id: job.id, state: job.state, stage: job.stage, created: job.created, message: job.message,
+      completed: job.completed, total: job.total, result: job.result || null, error: failure?.error || null,
+      ...(failure ? { detail: failure.detail } : {})
+    };
+  };
   function persist(job, force = false) {
     if (!force && Date.now() - (job.persistedAt || 0) < 1500) return job.writeChain || Promise.resolve();
     job.persistedAt = Date.now(); job.updatedAt = Date.now();
@@ -36,7 +43,12 @@ export function createStudioJobs(namespace, serialize = value => value) {
     }
     const job = { id: crypto.randomUUID(), namespace, owner: owner(req), state: 'queued', stage:'prepare', message: 'Revisando los insumos', completed: 0, total: 1, created: Date.now() };
     jobs.set(job.id, job);
-    await Promise.all([persist(job, true), writeStudioState('owners', ownerId(req), { jobId: job.id })]);
+    try {
+      await Promise.all([persist(job, true), writeStudioState('owners', ownerId(req), { jobId: job.id })]);
+    } catch (error) {
+      jobs.delete(job.id);
+      throw error;
+    }
     const progress = (message, completed = 0, total = 1, stage='content') => { Object.assign(job, { state: 'running', stage, message, completed, total }); persist(job).catch(error => console.error('[studio-job-state]', error.message)); };
     const heartbeat = setInterval(() => persist(job, true).catch(error => console.error('[studio-heartbeat]', error.message)), 20000); heartbeat.unref();
     Promise.resolve().then(() => work(progress)).then(async record => {
@@ -44,7 +56,7 @@ export function createStudioJobs(namespace, serialize = value => value) {
       await persist(job, true);
     }).catch(async error => {
       safeLog('error', 'studio.generation.failed', error);
-      Object.assign(job, { state: 'failed', message: 'No se pudo completar la generación', error: safeErrorCode(error, 'DOCUMENT_GENERATION_FAILED'), finished: Date.now() });
+      Object.assign(job, { state: 'failed', message: 'No se pudo completar la generación', error: publicFailure(error, failureCode).error, finished: Date.now() });
       await persist(job, true).catch(failure => console.error('[studio-job-state]', failure.message));
     }).finally(() => { clearInterval(heartbeat); setTimeout(() => jobs.delete(job.id), 3600000).unref(); });
     return payload(job);

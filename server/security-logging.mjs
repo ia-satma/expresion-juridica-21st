@@ -5,10 +5,12 @@ const errorNames = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', '
 const codes = new Set([
   'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ENOTFOUND', 'ENOENT', 'EACCES', 'EPERM', 'SQLITE_BUSY', 'SQLITE_ERROR',
   'AUTH_REQUIRED', 'CSRF_INVALID', 'ORIGIN_NOT_ALLOWED', 'ROLE_REQUIRED', 'OWNER_REQUIRED', 'PASSWORD_CHANGE_REQUIRED',
+  'CMS_STORE_INVALID', 'AUTH_DATABASE_URL_REQUIRED', 'AUTH_STABLE_SECRET_REQUIRED', 'CMS_OWNER_BOOTSTRAP_REQUIRED',
+  'CMS_OWNER_BOOTSTRAP_OWNER_MISMATCH', 'CMS_OWNER_BOOTSTRAP_DATABASE_OCCUPIED', 'CMS_OWNER_BOOTSTRAP_PASSWORD_INVALID',
   'MEDIA_TYPE_NOT_ALLOWED', 'LIMIT_FILE_SIZE', 'LIMIT_FILE_COUNT', 'LIMIT_UNEXPECTED_FILE', 'INVALID_REQUEST', 'CONTACT_FIELDS_INVALID',
   'PRESENTATION_INPUT_INVALID', 'PRESENTATION_FILES_TOO_LARGE', 'PRESENTATION_GENERATION_FAILED', 'PRESENTATION_FILE_NOT_FOUND',
   'OPENAI_TIMEOUT', 'OPENAI_OUTPUT_INCOMPLETE', 'OPENAI_SLIDE_COUNT_INVALID', 'OPENAI_INVALID_API_KEY', 'OPENAI_INSUFFICIENT_QUOTA',
-  'OPENAI_RATE_LIMIT_EXCEEDED', 'OPENAI_MODEL_NOT_FOUND', 'OPENAI_HTTP_400', 'OPENAI_HTTP_401', 'OPENAI_HTTP_403', 'OPENAI_HTTP_429', 'OPENAI_HTTP_500', 'OPENAI_HTTP_502', 'OPENAI_HTTP_503',
+  'OPENAI_RATE_LIMIT_EXCEEDED', 'OPENAI_SERVER_OVERLOADED', 'OPENAI_MODEL_NOT_FOUND', 'OPENAI_HTTP_400', 'OPENAI_HTTP_401', 'OPENAI_HTTP_403', 'OPENAI_HTTP_429', 'OPENAI_HTTP_500', 'OPENAI_HTTP_502', 'OPENAI_HTTP_503',
   'POST_GENERATION_FAILED', 'POST_JOB_ACTIVE', 'POST_JOB_INTERRUPTED', 'POST_JOB_NOT_FOUND', 'POST_NOT_FOUND', 'POST_VERSION_CHANGED', 'POST_COUNT_INVALID', 'POST_SIZE_INVALID',
   'POST_TEXT_LIMIT', 'POST_PIECE_INVALID', 'POST_RENDER_PENDING', 'OPENAI_REVIEW_INVALID',
   'DOCUMENT_GENERATION_FAILED', 'DOCUMENT_JOB_NOT_FOUND', 'DOCUMENT_INPUT_INVALID', 'DOCUMENT_VERSION_CHANGED', 'DOCUMENT_NOT_FOUND', 'DOCUMENT_FILE_NOT_FOUND',
@@ -66,6 +68,8 @@ export function publicFailure(error, fallback = 'INTERNAL_ERROR') {
   else if (['ROLE_REQUIRED','OWNER_REQUIRED'].includes(code)) detail = 'Tu cuenta no tiene permiso para realizar esta acción.';
   else if (code === 'CSRF_INVALID') detail = 'Actualiza el apartado y vuelve a guardar.';
   else if (code === 'ORIGIN_NOT_ALLOWED') detail = 'Abre el CMS desde la dirección oficial del sitio.';
+  else if (code === 'PRESENTATION_FILE_NOT_FOUND') detail = 'Este archivo no está disponible. Vuelve a generar la presentación para crear la descarga.';
+  else if (code === 'POST_JOB_INTERRUPTED' || code === 'STUDIO_JOB_INTERRUPTED') detail = 'La generación se interrumpió. Puedes volver a intentarlo.';
   else if (/VERSION_CHANGED$/.test(code)) detail = 'El contenido cambió en otra edición. Abre la versión más reciente.';
   else if (/JOB_ACTIVE$/.test(code)) detail = 'Ya hay una generación en curso. Espera a que termine.';
   else if (/JOB_INTERRUPTED$/.test(code)) detail = 'La generación se interrumpió. Puedes volver a intentarlo.';
@@ -76,7 +80,9 @@ export function publicFailure(error, fallback = 'INTERNAL_ERROR') {
   else if (code === 'POST_PIECE_INVALID') detail = 'Selecciona una pieza disponible del diseño.';
   else if (code === 'POST_RENDER_PENDING') detail = 'El texto está guardado. Ajusta o revisa el diseño antes de descargar esta revisión.';
   else if (/OPENAI_(INVALID_API_KEY|HTTP_401|HTTP_403)$/.test(code)) detail = 'El proveedor de IA rechazó las credenciales configuradas en el servidor.';
-  else if (/OPENAI_(INSUFFICIENT_QUOTA|RATE_LIMIT_EXCEEDED|HTTP_429)$/.test(code)) detail = 'El proveedor de IA alcanzó su límite de uso o saldo disponible.';
+  else if (code === 'OPENAI_INSUFFICIENT_QUOTA') detail = 'El proyecto de OpenAI alcanzó su límite de saldo o gasto. Revisa la facturación y los límites del proyecto antes de volver a generar.';
+  else if (code === 'OPENAI_RATE_LIMIT_EXCEEDED' || code === 'OPENAI_HTTP_429') detail = 'OpenAI alcanzó el límite temporal de solicitudes o tokens. Espera unos minutos antes de volver a generar. Si se repite, revisa los límites del proyecto de OpenAI.';
+  else if (code === 'OPENAI_SERVER_OVERLOADED') detail = 'El modelo de OpenAI está ocupado. Espera unos minutos antes de volver a generar.';
   else if (code === 'OPENAI_TIMEOUT') detail = 'La generación tardó más de lo previsto. Vuelve a intentarlo.';
   else if (code.startsWith('APP_STORAGE_') || code === 'STUDIO_STORAGE_UNAVAILABLE') detail = 'El almacenamiento no está disponible. Vuelve a intentarlo en unos momentos.';
   return { error: code, detail, ...(requestReference() ? { requestId: requestReference() } : {}) };

@@ -39,12 +39,13 @@ export async function openaiRequest(endpoint, body, timeout = 120000) {
   const key = process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
   const base = (process.env.OPENAI_BASE_URL || process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
   const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), timeout);
+  const retryUntil = Date.now() + timeout - 1_000;
   try {
     return await requestWithTextServiceTier(endpoint,body,async requestBody=>{
       const response=await fetch(`${base}${endpoint}`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${key}`},body:JSON.stringify(requestBody),signal:ctl.signal});
       let result;try{result=await response.json();}catch{throw new Error('OPENAI_RESPONSE_INVALID');}
-      return {ok:response.ok,status:response.status,result};
-    });
+      return {ok:response.ok,status:response.status,result,retryAfter:response.headers?.get('retry-after')};
+    }, { signal: ctl.signal, retryUntil });
   } catch (error) { throw new Error(error.name === 'AbortError' ? 'OPENAI_TIMEOUT' : /^OPENAI_[a-zA-Z0-9_-]{1,100}$/.test(error.message||'')?error.message:'OPENAI_REQUEST_FAILED'); }
   finally { clearTimeout(timer); }
 }

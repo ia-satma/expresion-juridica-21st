@@ -37,6 +37,19 @@ const mock=http.createServer(async(req,res)=>{
   if(name==='unsupported-twice'){status=400;result=rejected;}
   const failures={'other-400':[400,'context_length_exceeded'],'auth-401':[401,'invalid_api_key'],'busy-429':[429,'rate_limit_exceeded'],'server-503':[503,'server_error']};
   if(failures[name]){[status]=failures[name];result={error:{code:failures[name][1],param:name==='other-400'?'input':'service_tier',message:'Unsupported fixture value; provider body must remain private.'}};}
+  if (name === 'busy-429') res.setHeader('retry-after', '0');
+  if (name === 'recover-429' && cases.get(name) === 1) {
+    res.setHeader('retry-after', '0');
+    status = 429; result = { error: { code: 'rate_limit_exceeded' } };
+  }
+  if (name === 'later-429') {
+    res.setHeader('retry-after', '60');
+    status = 429; result = { error: { code: 'rate_limit_exceeded' } };
+  }
+  if (name === 'quota-429') {
+    res.setHeader('retry-after', '0');
+    status = 429; result = { error: { code: 'project_spend_limit_exceeded', type: 'insufficient_quota' } };
+  }
   if(req.url==='/images/generations')result={data:[{b64_json:'Zml4dHVyZQ=='}]};
   res.statusCode=status;res.end(JSON.stringify(result));
 });
@@ -58,7 +71,15 @@ try {
     const last=requests.at(-1).body;assert.equal(last.model,textBody.model);assert.deepEqual(last.reasoning,textBody.reasoning);
     if(name==='unsupported-param')assert(!Object.hasOwn(last,'service_tier'));else assert.equal(last.service_tier,'default');
   }
-  for(const name of ['other-400','auth-401','busy-429','server-503']){await assert.rejects(()=>openaiRequest('/responses',{...textBody,input:name}),/^Error: OPENAI_/);assert.equal(cases.get(name),1);}
+  for(const name of ['other-400','auth-401','server-503']){await assert.rejects(()=>openaiRequest('/responses',{...textBody,input:name}),/^Error: OPENAI_/);assert.equal(cases.get(name),1);}
+  for (const [name, code, count] of [['busy-429', 'OPENAI_RATE_LIMIT_EXCEEDED', 2], ['later-429', 'OPENAI_RATE_LIMIT_EXCEEDED', 1], ['quota-429', 'OPENAI_INSUFFICIENT_QUOTA', 1]]) {
+    await assert.rejects(() => openaiRequest('/responses', { ...textBody, input: name }), { message: code });
+    assert.equal(cases.get(name), count);
+  }
+  const recovered = await openaiRequest('/responses', { ...textBody, input: 'recover-429' });
+  assert.equal(cases.get('recover-429'), 2);
+  assert.deepEqual(recovered.serviceTier, { requested: 'fast', served: 'fast', fallback: false });
+  assert(requests.filter(item => ['busy-429', 'recover-429', 'later-429', 'quota-429'].includes(item.body.input)).every(item => item.body.service_tier === 'fast'));
   await assert.rejects(()=>openaiRequest('/responses',{...textBody,input:'unsupported-twice'}),/OPENAI_unsupported_value/);assert.equal(cases.get('unsupported-twice'),2);
   await assert.rejects(()=>openaiRequest('/responses',{...textBody,input:'invalid-json'}),/OPENAI_RESPONSE_INVALID/);assert.equal(cases.get('invalid-json'),1);
   await assert.rejects(()=>openaiRequest('/responses',{...textBody,input:'timeout'},200),/OPENAI_TIMEOUT/);assert.equal(cases.get('timeout'),1);
@@ -69,7 +90,7 @@ try {
   const designed={palette:'ivory',spacing:'generous',headlineScale:'expressive',background:'glow',imagePosition:'right',imageShare:'dominant',align:'center',panel:'curved'};assert.deepEqual(normalizeSocialDesign(designed,'editorial'),designed);
   assert.deepEqual([...socialDesignSchema.required].sort(),Object.keys(designed).sort());assert.deepEqual(normalizeSocialDesign({background:'invalid',imagePosition:'invalid',panel:'invalid'},'editorial'),normalizeSocialDesign({},'editorial'));
   assert.equal(normalizeSocialDesign({palette:'constructor'},'editorial').palette,'editorial');
-  console.log(JSON.stringify({passed:true,realRequestWrapperMocked:true,textFastDefault:true,standardRollback:true,requestedAndActualTierSeparated:true,unsupportedTierRetryBounded:true,noRetryOnAuthRateLimitServerOrTimeout:true,imagesUnchanged:true,modelAndReasoningPreserved:true,safeMalformedProviderError:true,designControls:8,legacyDesignDefaults:true,paidApiCalls:false}));
+  console.log(JSON.stringify({passed:true,realRequestWrapperMocked:true,textFastDefault:true,standardRollback:true,requestedAndActualTierSeparated:true,unsupportedTierRetryBounded:true,temporaryCapacityRetryBounded:true,quotaErrorsNotRetried:true,imagesUnchanged:true,modelAndReasoningPreserved:true,safeMalformedProviderError:true,designControls:8,legacyDesignDefaults:true,paidApiCalls:false}));
 } finally {
   process.chdir(root);mock.closeAllConnections();await new Promise(resolve=>mock.close(resolve));await fs.rm(temporary,{recursive:true,force:true});
 }

@@ -1,6 +1,6 @@
 import { createContentEditor, pageTitle } from "./content-editor.js?v=20261103-editable3";
 import { currentCmsCsrf } from "./csrf.js?v=20261102-studio2";
-import { createSocialStudio } from "./social.js?v=20261103-layout7";
+import { createSocialStudio } from "./social.js?v=20261110-studio-errors";
 import { createDocumentStudio } from "./documents.js?v=20261103-layout7";
 import { createGenerationProgress } from './generation-progress.js?v=20261103-layout7';
 import { confirmLibraryRemoval } from './library-actions.js?v=20261103-layout7';
@@ -998,7 +998,18 @@ async function waitPresentationJob(job) {
   presentationBusy=true;form.setAttribute('aria-busy','true');controls.forEach(control=>{control.disabled=true;});
   if($('#presentation-progress').hidden||$('#presentation-progress').dataset.state!=='running')presentationProgress.start({includeImages:false,created:job.created});
   presentationPolling=(async()=>{
-    for(;;){presentationProgress.update(job);if(job.state==='complete'){presentationProgress.finish('Presentación guardada. Los archivos están listos.');return job.result;}if(job.state==='failed')throw new Error(job.error||'PRESENTATION_GENERATION_FAILED');await new Promise(resolve=>setTimeout(resolve,1800));job=(await api(`/api/cms/presentations/jobs/${encodeURIComponent(job.id)}`)).job;}
+    for (;;) {
+      presentationProgress.update(job);
+      if (job.state === 'complete') {
+        presentationProgress.finish('Presentación guardada. Los archivos están listos.');
+        return job.result;
+      }
+      if (job.state === 'failed') {
+        throw Object.assign(new Error(job.error || 'PRESENTATION_GENERATION_FAILED'), { detail: job.detail });
+      }
+      await new Promise(resolve => setTimeout(resolve, 1800));
+      job = (await api(`/api/cms/presentations/jobs/${encodeURIComponent(job.id)}`)).job;
+    }
   })();
   try{return await presentationPolling;}finally{presentationPolling=null;presentationBusy=false;form.removeAttribute('aria-busy');controls.forEach((control,index)=>{control.disabled=disabled[index];});$('#generate-presentation').disabled=!['owner','editor'].includes(state.user?.role);$('#generate-presentation').textContent=presentationAiConfigured?'Generar presentación':'Generar archivo de prueba';syncPresentationVisuals();}
 }
@@ -1097,7 +1108,7 @@ async function loadPresentations() {
     button.disabled = presentationBusy || !['owner', 'editor'].includes(state.user?.role);
     if (!presentationBusy) button.textContent = presentationAiConfigured ? 'Generar presentación' : 'Generar archivo de prueba';
     renderPresentations();
-    if(response.activeJob&&!presentationPolling&&!presentationBusy){waitPresentationJob(response.activeJob).then(async record=>{renderPresentationResult(record);await loadPresentations();notify('Presentación lista en el historial.');}).catch(error=>{presentationProgress.fail();presentationError(error.message?.startsWith('OPENAI_')?'OpenAI no pudo completar la generación. Revisa los créditos y el acceso a los modelos.':'No se pudo completar la presentación. Puedes volver a intentarlo.');});}
+    if(response.activeJob&&!presentationPolling&&!presentationBusy){waitPresentationJob(response.activeJob).then(async record=>{renderPresentationResult(record);await loadPresentations();notify('Presentación lista en el historial.');}).catch(error=>{const message=error.detail||'No se pudo completar la presentación. Puedes volver a intentarlo.';presentationProgress.fail(message);presentationError(message);});}
   } catch (error) {
     if (error.code !== 'AUTH_REQUIRED') presentationError('No se pudieron cargar las presentaciones. Vuelve a pulsar Actualizar.');
   }
@@ -1142,7 +1153,7 @@ async function submitPresentation(event) {
     notify('Presentación guardada en el historial.');
   } catch (error) {
     status.textContent = '';
-    const message = error.detail?.startsWith('OPENAI_') ? 'OpenAI no pudo completar la generación. Revisa los créditos y el acceso a los modelos en tu cuenta e inténtalo de nuevo.' : error.detail || 'No se pudo generar la presentación. Inténtalo de nuevo.';
+    const message = error.detail || 'No se pudo generar la presentación. Inténtalo de nuevo.';
     presentationError(message);
     presentationProgress.fail(message);
   } finally {

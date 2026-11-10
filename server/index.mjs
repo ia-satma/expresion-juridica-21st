@@ -6,7 +6,8 @@ import express from 'express';
 import multer from 'multer';
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
 import { buildInventory, fileForRoute, inventoryHtml, routeFromFile, SITE_DIR } from './inventory.mjs';
-import { auth, authDatabase, migrateAuthDatabase } from './auth.mjs';
+import { auth, authDatabase, authUsesPostgres, hasAuthUsers, migrateAuthDatabase, setAuthUserRole } from './auth.mjs';
+import { recoverExistingOwner } from './owner-recovery.mjs';
 import { DATA_DIR, DATA_SCOPE, MEDIA_DIR, STORE_FILE } from './data-paths.mjs';
 import { appStorageEnabled, appStorageScope, deleteFile as deleteStorageFile, downloadFile as downloadStorageFile, removeLocalFile, uploadFile as uploadStorageFile } from './app-storage.mjs';
 import { generatePresentation, filePathForPresentation, ensurePresentationDir, presentationModels } from './presentation-generator.mjs';
@@ -130,14 +131,25 @@ function readStore() {
 }
 
 async function restoreCmsStoreFromAppStorage() {
-  if (!appStorageEnabled) return;
+  if (!appStorageEnabled) return false;
+  const durableProduction = authUsesPostgres && DATA_SCOPE === 'production';
   try {
-    const result=await downloadStorageFile('cms.json');
-    if(!result.ok||!result.value?.length)return;
-    JSON.parse(result.value.toString('utf8'));
-    const temporaryFile=STORE_FILE+'.remote';
-    fs.writeFileSync(temporaryFile,result.value,{mode:0o600});fs.renameSync(temporaryFile,STORE_FILE);
-  } catch(error) { safeLog('error','cms.restore.failed',error); }
+    const result = await downloadStorageFile('cms.json');
+    if (!result.ok) {
+      if (result.error === 'APP_STORAGE_NOT_FOUND') return !fs.existsSync(STORE_FILE);
+      throw new Error(result.error);
+    }
+    const restored = JSON.parse(result.value.toString('utf8'));
+    if (!Array.isArray(restored?.authAdmins) || !restored.settings) throw new Error('CMS_STORE_INVALID');
+    const temporaryFile = `${STORE_FILE}.remote`;
+    fs.writeFileSync(temporaryFile, result.value, { mode: 0o600 });
+    fs.renameSync(temporaryFile, STORE_FILE);
+    return true;
+  } catch (error) {
+    safeLog('error', 'cms.restore.failed', error);
+    if (durableProduction) throw error;
+    return false;
+  }
 }
 
 let storeUploadQueue=Promise.resolve();
@@ -153,12 +165,11 @@ function queueStoreUpload(snapshot=`${JSON.stringify(store,null,2)}\n`) {
   return work;
 }
 
-await restoreCmsStoreFromAppStorage();
+const remoteStoreVerified = await restoreCmsStoreFromAppStorage();
 let store = readStore();
 const userSecurity = createUserSecurity({ database:authDatabase, auth, secret:auth.options.secret, onAudit:(action,detail)=>{audit(action,null,detail);return writeStore();} });
 const contactRepository = createContactRepository(store);
 let inventory = buildInventory();
-enablePublicDiscovery(store, writeStore);
 
 function writeStore({localOnly=false}={}) {
   const temp = `${STORE_FILE}.tmp`;
@@ -223,26 +234,12 @@ function cmsAdminRecordForId(id) {
   return store.authAdmins.find((admin) => admin.userId === id || admin.id === id) || null;
 }
 
-function hasAuthUsers() {
-  try {
-    return Boolean(authDatabase.prepare('SELECT id FROM "user" LIMIT 1').get());
-  } catch (error) {
-    // The migration runs before the first request. Treat an unavailable table
-    // as empty so the guarded first-run path can still report a useful state.
-    return false;
-  }
+async function setupRequired() {
+  return !authUsesPostgres && store.authAdmins.length === 0 && !(await hasAuthUsers());
 }
 
-function setupRequired() {
-  return store.authAdmins.length === 0 && !hasAuthUsers();
-}
-
-function syncBetterAuthRole(userId, cmsRole) {
-  try {
-    authDatabase.prepare('UPDATE "user" SET role = ? WHERE id = ?').run(authRoleForCmsRole(cmsRole), userId);
-  } catch (error) {
-    console.error('[cms-auth] no se pudo sincronizar el rol Better Auth', error.message);
-  }
+async function syncBetterAuthRole(userId, cmsRole) {
+  await setAuthUserRole(userId, authRoleForCmsRole(cmsRole));
 }
 
 function publicSettings() {
@@ -319,11 +316,11 @@ async function authSessionFor(req) {
     const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers), query:{disableCookieCache:true,disableRefresh:true} });
     const createdAt = Date.parse(session?.session?.createdAt || '');
     const maxAgeMs = authSecurityPolicy.sessionHours * 60 * 60 * 1000;
-    if (Number.isFinite(createdAt) && Date.now() - createdAt >= maxAgeMs) { userSecurity.revokeSession(session); return null; }
-    if (!userSecurity.validateSession(session).valid) return null;
+    if (Number.isFinite(createdAt) && Date.now() - createdAt >= maxAgeMs) { await userSecurity.revokeSession(session); return null; }
+    if (!(await userSecurity.validateSession(session)).valid) return null;
     return session;
   } catch (error) {
-    console.error('[cms-auth] session lookup failed', error.message);
+    safeLog('error', 'auth.session.lookup.failed', error);
     return null;
   }
 }
@@ -590,8 +587,8 @@ app.use(publicSiteCompression);
 
 // Better Auth must receive the raw request stream before Express body parsers.
 // Express 5 uses the `*splat` catch-all syntax documented by Better Auth.
-app.all('/api/auth/sign-up/email', (req, res, next) => {
-  if (!setupRequired()) return res.status(403).json({ error: 'SIGNUP_DISABLED' });
+app.all('/api/auth/sign-up/email', async (req, res, next) => {
+  if (!(await setupRequired())) return res.status(403).json({ error: 'SIGNUP_DISABLED' });
   return toNodeHandler(auth)(req, res, next);
 });
 app.all('/api/auth/sign-out', async (req, res, next) => { const session = await authSessionFor(req); const admin = cmsAdminFor(session); if (session?.user && admin) { audit('auth.logout', session.user, { sessionId: session.session?.id || null, role: admin.role }); writeStore(); } return toNodeHandler(auth)(req, res, next); });
@@ -657,22 +654,21 @@ app.get('/healthz', (_req, res) => res.json({ ok: true, service: 'expresion-juri
 
 app.get('/api/cms/auth-state', async (req, res) => {
   const session = await authSessionFor(req);
-  if (!session?.user) return res.json({ authenticated: false, setupRequired: setupRequired() });
+  if (!session?.user) return res.json({ authenticated: false, setupRequired: await setupRequired() });
   let admin = cmsAdminFor(session);
-  if (!admin && store.authAdmins.length === 0) {
+  if (!admin && !authUsesPostgres && store.authAdmins.length === 0) {
     if (String(session.user.email || '').toLowerCase() !== OWNER_EMAIL) return res.status(403).json({ error: 'OWNER_EMAIL_REQUIRED' });
     admin = { id: crypto.randomUUID(), userId: session.user.id, email: session.user.email, role: 'owner', provider: 'password', mustChangePassword: false, createdAt: now() };
     store.authAdmins.push(admin);
-    syncBetterAuthRole(session.user.id, admin.role);
     audit('auth.bootstrap', session.user);
-    writeStore();
+    await writeStore();
   }
   if (!admin) return res.status(403).json({ error: 'CMS_ACCESS_NOT_GRANTED' });
-  syncBetterAuthRole(session.user.id, admin.role);
+  if (session.user.role !== authRoleForCmsRole(admin.role)) await syncBetterAuthRole(session.user.id, admin.role);
   const sessionId = session.session?.id;
   if (sessionId && !store.audit.some((item) => item.action === 'auth.login' && item.detail?.sessionId === sessionId)) { audit('auth.login', session.user, { sessionId, role: admin.role }); writeStore(); }
   const csrf = setCsrfCookie(res);
-  res.json({ authenticated: true, setupRequired: false, csrf, user: { ...session.user, role: admin.role, permissions:cmsPermissions({cmsAdmin:admin},store), mustChangePassword: Boolean(admin.mustChangePassword) }, sessionExpiresAt: session.session?.expiresAt || null, sessionMaxAgeHours: authSecurityPolicy.sessionHours, userSecurity:userSecurity.sessionInfo(session) });
+  res.json({ authenticated: true, setupRequired: false, csrf, user: { ...session.user, role: admin.role, permissions:cmsPermissions({cmsAdmin:admin},store), mustChangePassword: Boolean(admin.mustChangePassword) }, sessionExpiresAt: session.session?.expiresAt || null, sessionMaxAgeHours: authSecurityPolicy.sessionHours, userSecurity:await userSecurity.sessionInfo(session) });
 });
 
 app.post('/api/cms/auth/change-password', requireSession, requireCsrf, async (req, res) => {
@@ -685,14 +681,14 @@ app.post('/api/cms/auth/change-password', requireSession, requireCsrf, async (re
       body: { currentPassword, newPassword, revokeOtherSessions: false },
       headers: fromNodeHeaders(req.headers)
     });
-    userSecurity.revokeUserSessions(req.cmsUser.id,{exceptId:req.cmsSession.session.id});
+    await userSecurity.revokeUserSessions(req.cmsUser.id,{exceptId:req.cmsSession.session.id});
     req.cmsAdmin.mustChangePassword = false;
     req.cmsAdmin.updatedAt = now();
     audit('auth.password.change', req.cmsUser);
-    writeStore();
+    await writeStore();
     res.json({ ok: true });
   } catch (error) {
-    console.error('[cms-auth] no se pudo cambiar la contraseña', error.message);
+    safeLog('error', 'auth.password.change.failed', error);
     res.status(400).json({ error: 'PASSWORD_CHANGE_FAILED' });
   }
 });
@@ -1051,7 +1047,7 @@ function publicPresentationItem(item) {
   };
 }
 
-const presentationJobs=createStudioJobs('presentations',publicPresentationItem);
+const presentationJobs=createStudioJobs('presentations',publicPresentationItem,'PRESENTATION_GENERATION_FAILED');
 const getPresentation=async id=>await readStudioState('presentations',id)||(store.presentations||[]).find(item=>item.id===id);
 app.get('/api/cms/presentations', requireAuth, async (req, res) => {
   store.presentations=await listStudioRecords('presentations',store.presentations||[]);
@@ -1140,27 +1136,42 @@ app.get('/api/cms/presentations/:id/file/:kind', requireAuth, async (req, res, n
     contentType = 'image/png';
     disposition = 'inline';
   }
-  if (!file) return res.status(404).json({ error: 'PRESENTATION_FILE_NOT_FOUND' });
+  const fileNotFound = () => res.status(404).json(publicFailure('PRESENTATION_FILE_NOT_FOUND'));
+  if (!file) return fileNotFound();
   res.set('Cache-Control', 'private, no-store');
   res.set('X-Content-Type-Options', 'nosniff');
-  res.set('Content-Type', contentType);
-  res.set('Content-Disposition', `${disposition}; filename="${String(file.name || `${item.id}.${kind}`).replace(/[^a-zA-Z0-9._-]/g, '-') }"`);
+  const headers = {
+    'Content-Type': contentType,
+    'Content-Disposition': `${disposition}; filename="${String(file.name || `${item.id}.${kind}`).replace(/[^a-zA-Z0-9._-]/g, '-')}"`
+  };
   if (file.storage === 'replit-app-storage') {
     try {
       const result = await downloadStorageFile(file.relative);
-      if (!result.ok) return res.status(404).json({ error: 'PRESENTATION_FILE_NOT_FOUND' });
-      return res.send(kind === 'pptx' ? (await repairPresentationImageSizing(result.value)).buffer : result.value);
+      if (!result.ok) return result.error === 'APP_STORAGE_NOT_FOUND'
+        ? fileNotFound()
+        : res.status(503).json(publicFailure(result.error, 'APP_STORAGE_UNAVAILABLE'));
+      const data = kind === 'pptx' ? (await repairPresentationImageSizing(result.value)).buffer : result.value;
+      return res.set(headers).send(data);
     } catch (error) {
       return next(error);
     }
   }
   const localPath = filePathForPresentation(file);
-  if (!localPath || !path.resolve(localPath).startsWith(`${PRESENTATIONS_DIR}${path.sep}`) || !fs.existsSync(localPath)) return res.status(404).json({ error: 'PRESENTATION_FILE_NOT_FOUND' });
+  if (!localPath || !path.resolve(localPath).startsWith(`${PRESENTATIONS_DIR}${path.sep}`)) return fileNotFound();
   if (kind === 'pptx') {
-    try { return res.send((await repairPresentationImageSizing(await fs.promises.readFile(localPath))).buffer); }
-    catch (error) { return next(error); }
+    try {
+      const { buffer } = await repairPresentationImageSizing(await fs.promises.readFile(localPath));
+      return res.set(headers).send(buffer);
+    } catch (error) {
+      return error.code === 'ENOENT' ? fileNotFound() : next(error);
+    }
   }
-  return res.sendFile(localPath, { dotfiles: 'deny' }, (error) => { if (error && !res.headersSent) next(error); });
+  return res.sendFile(localPath, { dotfiles: 'deny', headers }, error => {
+    if (!error || res.headersSent) return;
+    res.removeHeader('Content-Disposition');
+    res.removeHeader('Content-Type');
+    return error.status === 404 || error.code === 'ENOENT' ? fileNotFound() : next(error);
+  });
 });
 
 registerSocialRoutes(app, { store, writeStore, requireAuth, requireEditor, requireCsrf, receivePresentationInputs, audit });
@@ -1297,9 +1308,8 @@ app.post('/api/cms/users', requireAuth, requireOwner, requireCsrf, async (req, r
     const user = result?.user || result;
     if (!user?.id) return res.status(500).json({ error: 'USER_CREATE_FAILED' });
     store.authAdmins.push({ id: crypto.randomUUID(), userId: user.id, email: user.email, name: user.name, role, provider: 'password', mustChangePassword: true, createdAt: now() });
-    syncBetterAuthRole(user.id, role);
     audit('auth.user.create', req.cmsUser, { userId: user.id, email: user.email, role });
-    writeStore();
+    await writeStore();
     res.status(201).json({ user: userPayload({ ...user, role: authRoleForCmsRole(role) }), temporaryPassword: password });
   } catch (error) {
     next(error);
@@ -1320,9 +1330,8 @@ app.patch('/api/cms/users/:id/role', requireAuth, requireOwner, requireCsrf, asy
     });
     target.role = role;
     target.updatedAt = now();
-    syncBetterAuthRole(target.userId, role);
     audit('auth.user.role', req.cmsUser, { userId: target.userId || target.id, role });
-    writeStore();
+    await writeStore();
     const user = result?.user || result;
     res.json({ user: userPayload({ ...user, role: authRoleForCmsRole(role) }) });
   } catch (error) {
@@ -1336,11 +1345,11 @@ app.post('/api/cms/users/:id/reset-password', requireAuth, requireOwner, require
     if (!target?.userId) return res.status(404).json({ error: 'USER_NOT_FOUND' });
     const temporary = temporaryPassword();
     await auth.api.setUserPassword({ body: { userId: target.userId, newPassword: temporary }, headers: fromNodeHeaders(req.headers) });
-    userSecurity.revokeUserSessions(target.userId);
+    await userSecurity.revokeUserSessions(target.userId);
     target.mustChangePassword = true;
     target.updatedAt = now();
     audit('auth.user.password.reset', req.cmsUser, { userId: target.userId });
-    writeStore();
+    await writeStore();
     res.json({ ok: true, temporaryPassword: temporary, userId: target.userId });
   } catch (error) { next(error); }
 });
@@ -1451,15 +1460,34 @@ app.use((error, _req, res, _next) => {
 
 async function start() {
   await migrateAuthDatabase();
+  await userSecurity.ready;
+  if (authUsesPostgres) {
+    const recovery = await recoverExistingOwner({
+      pool: authDatabase,
+      auth,
+      authAdmins: store.authAdmins,
+      ownerEmail: OWNER_EMAIL,
+      password: DATA_SCOPE === 'production' ? process.env.CMS_OWNER_BOOTSTRAP_PASSWORD : '',
+      persistNewOwner: remoteStoreVerified ? async (owner) => {
+        store.authAdmins.push(owner);
+        await writeStore();
+      } : undefined
+    });
+    if (DATA_SCOPE === 'production' && !(await hasAuthUsers())) throw new Error('CMS_OWNER_BOOTSTRAP_REQUIRED');
+    if (recovery.status === 'recovered' || recovery.status === 'created') console.log('[cms-auth] Cuenta propietaria guardada en PostgreSQL.');
+  }
+  enablePublicDiscovery(store, writeStore);
+  const initialSetup = await setupRequired();
   setTimeout(() => importSiteMediaOnStart().catch((error) => console.error('[cms-storage] importación inicial falló', error.message)), 1200);
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[cms] Expresión Jurídica CMS en http://localhost:${PORT}`);
     console.log(`[cms] ${inventory.pages.length} páginas · ${inventory.fields.length} campos editables`);
-    if (setupRequired()) console.log('[cms] Primer arranque: el acceso inicial está protegido para la cuenta propietaria.');
+    if (initialSetup) console.log('[cms] Primer arranque: el acceso inicial está protegido para la cuenta propietaria.');
   });
 }
 
 start().catch((error) => {
   safeLog('error', 'application.start.failed', error);
+  if (authUsesPostgres) void authDatabase.end().catch(() => {});
   process.exitCode = 1;
 });

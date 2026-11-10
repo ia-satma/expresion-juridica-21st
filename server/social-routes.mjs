@@ -26,7 +26,14 @@ export function registerSocialRoutes(app, { store, writeStore, requireAuth, requ
     files: { png: (item.files?.png||[]).map((_, index) => `/api/cms/posts/${item.id}/file/png?piece=${index}`), html: (item.files?.html||[]).map((_, index) => `/api/cms/posts/${item.id}/file/html?piece=${index}`), pack: item.files?.pack?`/api/cms/posts/${item.id}/file/pack`:null, copy: item.copies?`/api/cms/posts/${item.id}/file/copy`:null }
   });
   const userKey = req => String(req.cmsUser.id || req.cmsUser.email);
-  const jobPayload = job => ({ id: job.id, state: job.state, stage:job.stage, created:job.created, message: job.message, completed: job.completed, total: job.total, result: job.result || null, error: job.error ? safeErrorCode(job.error, 'POST_GENERATION_FAILED') : null });
+  const jobPayload = job => {
+    const failure = job.error ? publicFailure(job.error, 'POST_GENERATION_FAILED') : null;
+    return {
+      id: job.id, state: job.state, stage: job.stage, created: job.created, message: job.message,
+      completed: job.completed, total: job.total, result: job.result || null, error: failure?.error || null,
+      ...(failure ? { detail: failure.detail } : {})
+    };
+  };
   const ownerKey = req => crypto.createHash('sha256').update(userKey(req)).digest('hex');
   const persistJob = (job, force = false) => {
     const now = Date.now();
@@ -72,7 +79,12 @@ export function registerSocialRoutes(app, { store, writeStore, requireAuth, requ
     if (active && ['queued', 'running'].includes(active.state)) throw presentationInputError('Ya hay una generación en curso. Espera a que termine.', 'POST_JOB_ACTIVE', 409);
     const job = { id: crypto.randomUUID(), owner, state: 'queued', stage:'prepare', message: 'Revisando los insumos', completed: 0, total: 1, created: Date.now() };
     jobs.set(job.id, job);
-    await Promise.all([persistJob(job, true), writeStudioState('owners', ownerKey(req), { jobId: job.id })]);
+    try {
+      await Promise.all([persistJob(job, true), writeStudioState('owners', ownerKey(req), { jobId: job.id })]);
+    } catch (error) {
+      jobs.delete(job.id);
+      throw error;
+    }
     const progress = (message, completed = 0, total = 1, stage='content') => { Object.assign(job, { state: 'running', stage, message, completed, total, updatedAt: Date.now() }); persistJob(job).catch(error => console.error('[social-job-state]', error.message)); };
     const heartbeat = setInterval(() => { job.updatedAt = Date.now(); persistJob(job, true).catch(error => console.error('[social-heartbeat]', error.message)); }, 20000); heartbeat.unref();
     Promise.resolve().then(() => work(progress)).then(async record => {

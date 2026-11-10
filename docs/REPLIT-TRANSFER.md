@@ -21,18 +21,21 @@ Configura estos valores en Secrets o Configuration de Replit.
 - `BETTER_AUTH_URL` con la URL publicada en la cuenta del cliente.
 - `CMS_OWNER_EMAIL` con la cuenta propietaria del cliente.
 - `CMS_DATA_SCOPE=production` en el Deployment.
+- `CMS_AUTH_STORAGE=postgres` solo en el Deployment. Replit inyecta `DATABASE_URL` cuando se aprovisiona PostgreSQL de producción. Para otra base PostgreSQL, usa `CMS_AUTH_DATABASE_URL` como secreto.
 - `OPENAI_API_KEY` en Secrets.
 - `OPENAI_TEXT_SERVICE_TIER=fast` y los modelos opcionales que correspondan.
 
-Si se conservan usuarios y sesiones existentes, conserva también el `BETTER_AUTH_SECRET` actual y transfiere la base SQLite con el procedimiento siguiente. Si se crea una instalación nueva, usa un secreto nuevo y crea el propietario desde el primer arranque.
+Para PostgreSQL el secreto de autenticación debe permanecer estable. Si `BETTER_AUTH_SECRET` no está configurado, el servidor acepta `SESSION_SECRET` de Replit siempre que tenga al menos 32 caracteres.
 
 ## Datos y App Storage
 
 La aplicación separa los archivos por `data/<scope>/`. `data/production/auth.sqlite`, `cms.json`, `better-auth.secret`, los archivos de presentaciones y `storage/media/production` son datos privados de ejecución y no se deben subir a GitHub.
 
-Antes del cambio de dominio, genera un respaldo cifrado de la base y del CMS en la cuenta actual. Transfiere de forma privada `auth.sqlite` y `cms.json` al mismo scope en la cuenta nueva, manteniendo permisos de archivo. La aplicación ejecuta las migraciones de Better Auth al iniciar.
+Antes del cambio de cuenta, respalda de forma privada la base de autenticación y el CMS. Conserva el secreto de autenticación si vas a restaurar las sesiones de una base PostgreSQL existente. La aplicación ejecuta las migraciones de Better Auth al iniciar.
 
-App Storage conserva `cms.json` y los objetos del CMS. La implementación actual de Better Auth escribe `auth.sqlite` en el disco de la instancia del servidor. Antes de usar cuentas reales en un Deployment de Replit, configura almacenamiento persistente para la autenticación y comprueba que las cuentas se conservan al reiniciar y al republicar.
+En producción, PostgreSQL conserva las credenciales, sesiones y controles de intentos de acceso. App Storage conserva `cms.json` y los objetos del CMS. El workspace de desarrollo puede seguir usando SQLite. En Publishing, activa la base de producción y deja desmarcada la copia de los datos de desarrollo.
+
+Para una base PostgreSQL vacía, añade temporalmente `CMS_OWNER_BOOTSTRAP_PASSWORD` en **Production app secrets**. En una recuperación desde SQLite, se usa el ID del propietario existente del CMS y la contraseña proporcionada por el operador. Las demás credenciales de SQLite requieren una migración de datos o volver a crear el acceso desde el panel. En una instalación nueva, el servidor guarda la cuenta propietaria en App Storage antes de completar su creación. Retira el secreto temporal tras comprobar el acceso y republica para confirmar que se conserva. El registro público de cuentas se mantiene cerrado con PostgreSQL.
 
 En App Storage, copia los objetos del bucket anterior al bucket de la cuenta nueva. Deben conservarse los prefijos `production/`, `production/studio-state/`, `production/presentations/` y los nombres de los medios registrados en `cms.json`. Comprueba desde el CMS que Biblioteca, trabajos, documentos, presentaciones, posts y solicitudes muestran sus registros después de la copia.
 

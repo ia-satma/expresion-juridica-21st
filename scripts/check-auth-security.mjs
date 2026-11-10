@@ -79,9 +79,21 @@ try {
   const createdUser=await request('/api/cms/users',{method:'POST',body:JSON.stringify({name:'Usuario sintético',email:'user-fixture@invalid.test',role:'editor'})});assert.equal(createdUser.status,201);const createdUserPayload=(await createdUser.json()).user;
   assert.equal((await request(`/api/cms/users/${createdUserPayload.id}`,{method:'DELETE',body:'{}'})).status,200);assert(!(await (await request('/api/cms/users')).json()).users.some(item=>item.id===createdUserPayload.id));
   assert.equal((await request(`/api/cms/users/${createdUserPayload.id}/restore`,{method:'POST',body:'{}'})).status,200);assert((await (await request('/api/cms/users')).json()).users.some(item=>item.id===createdUserPayload.id));
-  const startedPpt=await request('/api/cms/presentations/generate',{method:'POST',body:JSON.stringify({topic:'Presentación sintética de prueba',slideCount:3,formats:['png'],includeVisuals:false,includeBookends:false,async:true})});assert.equal(startedPpt.status,202);let pptJob=(await startedPpt.json()).job;assert.equal(pptJob.stage,'prepare');
+  const startedPpt=await request('/api/cms/presentations/generate',{method:'POST',body:JSON.stringify({topic:'Presentación sintética de prueba',slideCount:3,formats:['png','pdf'],includeVisuals:false,includeBookends:false,async:true})});assert.equal(startedPpt.status,202);let pptJob=(await startedPpt.json()).job;assert.equal(pptJob.stage,'prepare');
   const pptStart=Date.now();while(!['complete','failed'].includes(pptJob.state)){assert(Date.now()-pptStart<45000);await new Promise(resolve=>setTimeout(resolve,30));pptJob=(await (await request(`/api/cms/presentations/jobs/${pptJob.id}`)).json()).job;}
   assert.equal(pptJob.state,'complete');assert.equal(pptJob.result.aiUsed,false);assert.equal(pptJob.result.slideCount,3);assert.equal((await request(pptJob.result.files.images[0])).status,200);
+  const pdf = await request(pptJob.result.files.pdf);
+  assert.equal(pdf.status, 200);
+  assert.equal(pdf.headers.get('content-type'), 'application/pdf');
+  assert.match(pdf.headers.get('content-disposition'), /^attachment;.*\.pdf"/);
+  await pdf.arrayBuffer();
+  const presentationDir = path.join(temporary, 'data', 'isolated-security-check', 'generated-presentations', pptJob.result.id);
+  const pdfName = (await fs.readdir(presentationDir)).find(name => name.endsWith('.pdf'));
+  await fs.unlink(path.join(presentationDir, pdfName));
+  const missingPdf = await request(pptJob.result.files.pdf);
+  assert.equal(missingPdf.status, 404);
+  assert.equal(missingPdf.headers.get('content-disposition'), null);
+  assert.equal((await missingPdf.json()).error, 'PRESENTATION_FILE_NOT_FOUND');
   assert((await (await request('/api/cms/presentations')).json()).presentations.some(item=>item.id===pptJob.result.id));
   const secondRegistration = await fetch(base + '/api/auth/sign-up/email', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ email: 'second-fixture@invalid.test', password, name: 'Unused fixture' }) });
   assert.equal(secondRegistration.status, 403);
