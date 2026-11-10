@@ -1,15 +1,15 @@
 # Contexto canónico del proyecto Expresión Jurídica
 
-Actualizado el 2026-11-09. Este documento reúne las decisiones vigentes del sitio, CMS y estudio editorial para que una nueva sesión pueda retomar el trabajo sin reconstruir el contexto desde el historial de chat.
+Actualizado el 2026-11-10. Este documento reúne las decisiones vigentes del sitio, CMS y estudio editorial para que una nueva sesión pueda retomar el trabajo sin reconstruir el contexto desde el historial de chat.
 
 ## Identidad y despliegue
 
-- Producción: https://expresion-juridica-21-st.replit.app/
-- CMS: https://expresion-juridica-21-st.replit.app/admin/
+- Despliegue del cliente: https://expresion-juridica-mx.replit.app/
+- CMS del cliente: https://expresion-juridica-mx.replit.app/admin/
 - Repositorio: https://github.com/ia-satma/expresion-juridica-21st.git, rama `main`.
 - Workspace local: `/Volumes/alejandro /JHH WEB PAGES`.
-- Replit: `https://replit.com/@iadurezza/expresion-juridica-21st`.
-- El último despliegue del panel de usuarios está publicado y aparece como `Live` en Replit. El repositorio conserva la documentación vigente en `docs/PROJECT-CONTEXT.md` y la rama `main` está alineada con `origin/main`.
+- Replit del cliente: `https://replit.com/t/expresion-juridica/repls/expresion-juridica-21st-2`. La instancia histórica es `https://expresion-juridica-21-st.replit.app/`.
+- El procedimiento de aprovisionamiento y recuperación está en [REPLIT-TRANSFER.md](REPLIT-TRANSFER.md). El código de persistencia y manejo de límites de IA quedó en `1715f53`.
 - Los archivos originales proporcionados por el cliente (`1.jpeg`, `2.jpeg`, `Hoja membretada.pdf` y `documentos /`) permanecen fuera de los commits de código.
 
 ## Marca y contacto
@@ -20,7 +20,7 @@ El correo canónico del sistema es `Consultoria@expresionjuridica.com`. El membr
 
 ## Arquitectura
 
-El sitio público existente vive en `sitio/`. Express lo sirve y aplica overrides del CMS. El panel está en `public/admin/`. Better Auth y la seguridad de acceso viven en SQLite por entorno. El contenido y la configuración se guardan por scope. App Storage conserva medios, exportaciones y estado de los estudios cuando está conectado.
+El sitio público existente vive en `sitio/`. Express lo sirve y aplica overrides del CMS. El panel está en `public/admin/`. En el despliegue del cliente, Better Auth y los controles de acceso usan PostgreSQL con `CMS_AUTH_STORAGE=postgres`. El workspace de desarrollo conserva SQLite. App Storage conserva el contenido y la configuración del CMS, medios, exportaciones y estado de los estudios por scope.
 
 Módulos principales:
 
@@ -35,6 +35,7 @@ Módulos principales:
 
 - Texto y dirección editorial: `gpt-6.1-sol`.
 - Las llamadas de texto solicitan `service_tier: "fast"`, conservando el modelo y el esfuerzo de razonamiento. Se registra el nivel solicitado y el servido cuando el proveedor lo informa.
+- Los estudios muestran por separado los límites temporales, la cuota y las credenciales rechazadas. Las respuestas temporales reconocidas admiten un reintento acotado con el mismo modelo y nivel cuando la espera cabe en el presupuesto de la operación.
 - Imágenes: `gpt-image-2.5-sunburst` en la configuración comprobada. Las fotos son documentales, realistas y mexicanas por defecto, salvo geografía explícita.
 - `OPENAI_API_KEY` solo existe en Secrets del servidor. Nunca se envía al navegador.
 - Las fotos generadas se conservan como metadata interna. La leyenda visible «Imagen generada con IA» fue retirada de presentaciones y posts.

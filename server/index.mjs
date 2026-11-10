@@ -34,6 +34,7 @@ const PORT = Number(process.env.PORT || 3000);
 const ADMIN_DIR = path.join(ROOT, 'public', 'admin');
 const OWNER_EMAIL = String(process.env.CMS_OWNER_EMAIL || 'ia@satma.mx').trim().toLowerCase();
 const DEFAULT_CANONICAL_BASE_URL = String(process.env.CMS_CANONICAL_BASE_URL || process.env.REPLIT_DEPLOYMENT_URL || process.env.BETTER_AUTH_URL || 'https://expresion-juridica-21-st.replit.app').trim().replace(/\/$/, '');
+const cmsPermissionCatalog = ['content', 'media', 'signatures', 'submissions', 'settings', 'users', 'view'];
 const PRESENTATIONS_DIR = path.resolve(DATA_DIR, 'generated-presentations');
 const PRESENTATION_INPUTS_DIR = path.resolve(DATA_DIR, 'presentation-inputs');
 
@@ -125,7 +126,8 @@ function readStore() {
       settings: mergeSettings(parsed.settings)
     };
   } catch (error) {
-    console.error('[cms] No se pudo leer data/cms.json; se usa una copia vacía.', error.message);
+    safeLog('error', 'cms.store.read.failed', error);
+    if (authUsesPostgres && DATA_SCOPE === 'production') throw new Error('CMS_STORE_INVALID');
     return defaultStore();
   }
 }
@@ -221,7 +223,6 @@ function authRoleForCmsRole(role) {
   return role === 'owner' ? 'admin' : 'user';
 }
 
-const cmsPermissionCatalog = ['content', 'media', 'signatures', 'submissions', 'settings', 'users', 'view'];
 function normalizeRolePermissions(input = {}) {
   const defaults = { owner: ['*'], editor: ['content', 'media', 'signatures', 'submissions'], viewer: ['view'] };
   return Object.fromEntries(Object.entries(defaults).map(([role, fallback]) => {
