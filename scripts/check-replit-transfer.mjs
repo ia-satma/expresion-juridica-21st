@@ -17,7 +17,8 @@ pass(/run\s*=\s*"npm start"/.test(replit), '.replit debe arrancar con npm start'
 pass(/deploymentTarget\s*=\s*"cloudrun"/.test(replit), '.replit debe mantener el destino Cloud Run');
 pass(/localPort\s*=\s*3000/.test(replit), '.replit debe exponer el puerto local 3000');
 pass(!/replit-objstore-[a-f0-9-]+/.test(replit), '.replit no debe fijar el bucket de otra cuenta');
-pass(/CMS_DATA_SCOPE\s*=\s*"production"/.test(replit), '.replit debe separar el entorno production');
+pass(/\[userenv\.shared\]\s+CMS_DATA_SCOPE\s*=\s*"development"/.test(replit), '.replit debe usar development en el workspace');
+pass(/\[deployment\][\s\S]*?run\s*=\s*\["env",\s*"CMS_DATA_SCOPE=production",\s*"npm",\s*"start"\]/.test(replit), '.replit debe usar production al ejecutar el Deployment');
 pass(envExample.includes('BETTER_AUTH_SECRET='), '.env.example debe documentar BETTER_AUTH_SECRET');
 pass(envExample.includes('BETTER_AUTH_URL='), '.env.example debe documentar BETTER_AUTH_URL');
 pass(envExample.includes('CMS_OWNER_EMAIL='), '.env.example debe documentar CMS_OWNER_EMAIL');
@@ -36,6 +37,6 @@ if (failures.length) {
 
 console.log('check-replit-transfer: PASS');
 console.log('- Node 20, Cloud Run, puerto 3000 y npm start');
-console.log('- scope production separado');
+console.log('- workspace development y Deployment production separados');
 console.log('- bucket y datos de producción fuera del repositorio');
 console.log('- Secrets y App Storage documentados para la cuenta destino');

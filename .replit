@@ -7,7 +7,7 @@ externalPort = 80
 
 [deployment]
 deploymentTarget = "cloudrun"
-run = ["npm", "start"]
+run = ["env", "CMS_DATA_SCOPE=production", "npm", "start"]
 
 [nix]
 channel = "stable-25_05"
@@ -15,4 +15,4 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-CMS_DATA_SCOPE = "production"
+CMS_DATA_SCOPE = "development"

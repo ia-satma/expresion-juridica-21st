@@ -11,7 +11,7 @@ La configuración base no añade `X-Robots-Tag: noindex` para que la publicació
 3. Comprueba que `.replit` mantiene `npm start`, Cloud Run y el puerto 3000.
 4. Activa App Storage en el nuevo proyecto. El código usa el bucket predeterminado de esa cuenta cuando `REPLIT_OBJECT_STORAGE_BUCKET_ID` y `DEFAULT_OBJECT_STORAGE_BUCKET_ID` quedan vacíos. Si el cliente crea un bucket nombrado, guarda su identificador en Secrets o Configuration de Replit, nunca en Git.
 
-En el workspace de desarrollo usa `CMS_DATA_SCOPE=development`. En el Deployment usa `CMS_DATA_SCOPE=production`. La configuración compartida de Replit debe revisarse después de importar el proyecto para que una prueba local no escriba datos de producción.
+`.replit` usa `CMS_DATA_SCOPE=development` en el workspace y fija `CMS_DATA_SCOPE=production` en el comando de arranque del Deployment. Si sustituyes ese comando en Publishing, conserva `env CMS_DATA_SCOPE=production npm start`.
 
 ## Secrets y configuración
 
@@ -31,6 +31,8 @@ Si se conservan usuarios y sesiones existentes, conserva también el `BETTER_AUT
 La aplicación separa los archivos por `data/<scope>/`. `data/production/auth.sqlite`, `cms.json`, `better-auth.secret`, los archivos de presentaciones y `storage/media/production` son datos privados de ejecución y no se deben subir a GitHub.
 
 Antes del cambio de dominio, genera un respaldo cifrado de la base y del CMS en la cuenta actual. Transfiere de forma privada `auth.sqlite` y `cms.json` al mismo scope en la cuenta nueva, manteniendo permisos de archivo. La aplicación ejecuta las migraciones de Better Auth al iniciar.
+
+App Storage conserva `cms.json` y los objetos del CMS. La implementación actual de Better Auth escribe `auth.sqlite` en el disco de la instancia del servidor. Antes de usar cuentas reales en un Deployment de Replit, configura almacenamiento persistente para la autenticación y comprueba que las cuentas se conservan al reiniciar y al republicar.
 
 En App Storage, copia los objetos del bucket anterior al bucket de la cuenta nueva. Deben conservarse los prefijos `production/`, `production/studio-state/`, `production/presentations/` y los nombres de los medios registrados en `cms.json`. Comprueba desde el CMS que Biblioteca, trabajos, documentos, presentaciones, posts y solicitudes muestran sus registros después de la copia.
 
