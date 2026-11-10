@@ -1,13 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { Client } from '@replit/object-storage';
 import { DATA_DIR, DATA_SCOPE } from './data-paths.mjs';
-import { appStorageEnabled, uploadFile, downloadFile } from './app-storage.mjs';
+import { appStorageEnabled, uploadFile, downloadFile, listFiles } from './app-storage.mjs';
 
 const ROOT = path.join(DATA_DIR, 'studio-state');
-const bucketId = process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID || process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
-const client = appStorageEnabled ? new Client(bucketId ? { bucketId } : undefined) : null;
 function keyFor(collection, id) {
   if (!['posts', 'documents', 'presentations', 'jobs', 'owners', 'submissions'].includes(collection) || !/^[a-z0-9-]{16,80}$/.test(id)) throw new Error('STUDIO_STATE_KEY_INVALID');
   return `studio-state/${collection}/${id}.json`;
@@ -33,11 +30,12 @@ export async function readStudioState(collection, id) {
 export async function listStudioRecords(collection, fallback = []) {
   if (!['posts', 'documents', 'presentations', 'submissions'].includes(collection)) throw new Error('STUDIO_STATE_KEY_INVALID');
   let ids;
-  if (client) {
-    const prefix = `${DATA_SCOPE}/studio-state/${collection}/`;
-    const result = await client.list({ prefix });
+  if (appStorageEnabled) {
+    const prefix = `studio-state/${collection}/`;
+    const result = await listFiles(prefix);
     if (!result.ok) throw new Error('STUDIO_STORAGE_UNAVAILABLE');
-    ids = result.value.map(item => item.name.slice(prefix.length).replace(/\.json$/, '')).filter(id => /^[a-f0-9-]{36}$/.test(id));
+    const scopedPrefixLength = DATA_SCOPE.length + 1 + prefix.length;
+    ids = result.value.map(item => item.name.slice(scopedPrefixLength).replace(/\.json$/, '')).filter(id => /^[a-f0-9-]{36}$/.test(id));
   } else {
     ids = (await fs.readdir(path.join(ROOT, collection)).catch(error => { if (error.code === 'ENOENT') return []; throw error; })).filter(name => name.endsWith('.json')).map(name => name.slice(0, -5));
   }

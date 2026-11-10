@@ -2,20 +2,10 @@ import fs from 'node:fs';
 import { Client } from '@replit/object-storage';
 import { DATA_SCOPE } from './data-paths.mjs';
 
-const isReplit = Boolean(process.env.REPL_ID || process.env.REPLIT_DEPLOYMENT_URL || process.env.REPLIT_DEV_DOMAIN);
+const bucketId = process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID || process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
 let client = null;
-if (isReplit) {
-  try {
-    // Replit exposes the default bucket automatically. A bucket ID can be
-    // supplied when the project has an explicitly named App Storage bucket.
-    const bucketId = process.env.REPLIT_OBJECT_STORAGE_BUCKET_ID || process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
-    client = new Client(bucketId ? { bucketId } : undefined);
-  } catch (error) {
-    console.error('[cms-storage] no se pudo inicializar Replit App Storage', error.message);
-  }
-}
 
-export const appStorageEnabled = Boolean(client);
+export const appStorageEnabled = Boolean(process.env.REPL_ID || process.env.REPLIT_DEPLOYMENT_URL || process.env.REPLIT_DEV_DOMAIN);
 export const appStorageScope = DATA_SCOPE;
 
 function objectKey(filename) {
@@ -29,28 +19,40 @@ function resultError(result) {
   return status === 404 || /not[ _]found|no such object|404/i.test(message) ? 'APP_STORAGE_NOT_FOUND' : 'APP_STORAGE_UNAVAILABLE';
 }
 
+async function storageOperation(operation) {
+  if (!appStorageEnabled) return { ok: false, error: 'APP_STORAGE_NOT_CONFIGURED' };
+  let current;
+  try {
+    // The SDK starts default bucket discovery in its constructor. Observe it
+    // immediately through the operation so a missing bucket cannot crash startup.
+    current = client ??= new Client(bucketId ? { bucketId } : undefined);
+    const result = await operation(current);
+    const error = resultError(result);
+    return error ? { ok: false, error } : result;
+  } catch {
+    if (client === current) client = null;
+    return { ok: false, error: 'APP_STORAGE_UNAVAILABLE' };
+  }
+}
+
 export async function uploadFile(filename, localPath) {
-  if (!client) return { ok: false, error: 'APP_STORAGE_NOT_CONFIGURED' };
   const key = objectKey(filename);
-  const result = await client.uploadFromFilename(key, localPath);
-  const error = resultError(result);
-  if (error) return { ok: false, error };
-  return { ok: true, key };
+  const result = await storageOperation(storage => storage.uploadFromFilename(key, localPath));
+  return result.ok ? { ok: true, key } : result;
 }
 
 export async function downloadFile(filename) {
-  if (!client) return { ok: false, error: 'APP_STORAGE_NOT_CONFIGURED' };
-  const result = await client.downloadAsBytes(objectKey(filename));
-  const error = resultError(result);
-  if (error) return { ok: false, error };
-  return { ok: true, value: Buffer.from(result.value) };
+  const result = await storageOperation(storage => storage.downloadAsBytes(objectKey(filename)));
+  return result.ok ? { ok: true, value: Buffer.from(result.value) } : result;
 }
 
 export async function deleteFile(filename) {
-  if (!client) return { ok: false, error: 'APP_STORAGE_NOT_CONFIGURED' };
-  const result = await client.delete(objectKey(filename));
-  const error = resultError(result);
-  return error ? { ok: false, error } : { ok: true };
+  const result = await storageOperation(storage => storage.delete(objectKey(filename)));
+  return result.ok ? { ok: true } : result;
+}
+
+export function listFiles(prefix) {
+  return storageOperation(storage => storage.list({ prefix: objectKey(prefix) }));
 }
 
 export function removeLocalFile(filePath) {
