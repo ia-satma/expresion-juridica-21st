@@ -43,7 +43,10 @@ export async function uploadFile(filename, localPath) {
 
 export async function downloadFile(filename) {
   const result = await storageOperation(storage => storage.downloadAsBytes(objectKey(filename)));
-  return result.ok ? { ok: true, value: Buffer.from(result.value) } : result;
+  if (!result.ok) return result;
+  // The Replit SDK forwards the [Buffer] tuple returned by Google Storage.
+  const bytes = Array.isArray(result.value) ? result.value[0] : result.value;
+  return Buffer.isBuffer(bytes) ? { ok: true, value: bytes } : { ok: false, error: 'APP_STORAGE_UNAVAILABLE' };
 }
 
 export async function deleteFile(filename) {

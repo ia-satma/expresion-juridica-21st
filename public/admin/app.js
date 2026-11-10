@@ -828,10 +828,10 @@ function signatureAssetBase(value) {
   return base.endsWith('/') ? base : `${base}/`;
 }
 
-function buildSignatureHtml(value) {
+function buildSignatureHtml(value, artwork) {
   const base = signatureAssetBase(value);
-  const bg = base + 'fondo-derecha.png';
-  const logo = base + 'logo.png';
+  const bg = artwork?.background ?? base + 'fondo-derecha.png';
+  const logo = artwork?.logo ?? base + 'logo.png';
   const PW = 2087.971, PH = 767.057, LEFT = 240, H = 220, k = 600 / PW;
   const SERIF = "Georgia,'Times New Roman',serif";
   const SANS = "Arial,sans-serif";
@@ -862,19 +862,55 @@ function buildSignatureHtml(value) {
   if (y < H) rows += '<tr><td height="' + (H - y) + '" style="height:' + (H - y) + 'px;line-height:' + (H - y) + 'px;font-size:1px;mso-line-height-rule:exactly;">&nbsp;</td></tr>';
   return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;border-collapse:collapse;mso-table-lspace:0;mso-table-rspace:0;"><tr><td width="' + LEFT + '" valign="top" style="width:' + LEFT + 'px;padding:0;vertical-align:top;font-size:0;line-height:0;"><img src="' + signatureEsc(logo) + '" width="' + LEFT + '" height="' + H + '" alt="Expresión Jurídica Consultores" style="display:block;width:' + LEFT + 'px;height:' + H + 'px;border:0;outline:none;"></td><td width="' + (600 - LEFT) + '" height="' + H + '" valign="top" background="' + signatureEsc(bg) + '" bgcolor="#ffffff" style="width:' + (600 - LEFT) + 'px;height:' + H + 'px;padding:0;vertical-align:top;background-color:#ffffff;background-image:url(\'' + signatureEsc(bg) + '\');background-repeat:no-repeat;background-position:0 0;background-size:' + (600 - LEFT) + 'px ' + H + 'px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="' + (600 - LEFT) + '" style="width:' + (600 - LEFT) + 'px;border-collapse:collapse;">' + rows + '</table></td></tr></table>';
 }
+let signaturePreviewArtwork;
+async function loadSignaturePreviewImage(filename) {
+  const response = await fetch(`/firma-assets/email/${filename}`, { credentials: 'same-origin' });
+  if (!response.ok) throw new Error('SIGNATURE_PREVIEW_UNAVAILABLE');
+  const image = await response.blob();
+  if (image.type !== 'image/png') throw new Error('SIGNATURE_PREVIEW_UNAVAILABLE');
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(image);
+  });
+}
+
+function loadSignaturePreviewArtwork() {
+  // The authenticated CMS loads the artwork before it enters the sandboxed frame.
+  signaturePreviewArtwork ??= Promise.all([
+    loadSignaturePreviewImage('logo.png'),
+    loadSignaturePreviewImage('fondo-derecha.png')
+  ]).then(([logo, background]) => ({ logo, background })).catch(error => {
+    signaturePreviewArtwork = undefined;
+    throw error;
+  });
+  return signaturePreviewArtwork;
+}
+
 let signaturePreviewObserver;
 function renderSignatureEditor(value = signatureDefaults) {
   const next = { ...signatureDefaults, ...value };
   for (const key of Object.keys(signatureDefaults)) { const element = $(`#signature-${key === 'baseUrl' ? 'base-url' : key}`); if (element) element.value = next[key] || ''; }
-  const base = signatureAssetBase(next);
-  const html = buildSignatureHtml(next);
+  $('#signature-html').value = buildSignatureHtml(next);
   signaturePreviewObserver?.disconnect();
-  const preview='<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;width:600px;height:220px;overflow:hidden}*{box-sizing:border-box}</style></head><body>'+html+'</body></html>';
-  $('#signature-preview').innerHTML = '<div class="signature-preview-canvas"><iframe class="signature-preview-frame" title="Vista previa de la firma" sandbox="" scrolling="no" srcdoc="' + signatureEsc(preview) + '"></iframe></div>';
-  const canvas=$('#signature-preview .signature-preview-canvas'),frame=canvas.querySelector('iframe');
-  const fit=()=>{frame.style.transform=`scale(${Math.min(1,canvas.clientWidth/600)})`;};
-  signaturePreviewObserver=new ResizeObserver(fit);signaturePreviewObserver.observe(canvas);fit();
-  $('#signature-html').value = html;
+  const preview = $('#signature-preview');
+  preview.innerHTML = '<div class="signature-preview-canvas"><iframe class="signature-preview-frame" title="Vista previa de la firma" sandbox="" scrolling="no"></iframe></div>';
+  const canvas = preview.querySelector('.signature-preview-canvas');
+  const frame = canvas.querySelector('iframe');
+  const fit = () => { frame.style.transform = `scale(${Math.min(1, canvas.clientWidth / 600)})`; };
+  signaturePreviewObserver = new ResizeObserver(fit);
+  signaturePreviewObserver.observe(canvas);
+  fit();
+
+  loadSignaturePreviewArtwork().then(artwork => {
+    if (!frame.isConnected) return;
+    frame.srcdoc = '<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;width:600px;height:220px;overflow:hidden}*{box-sizing:border-box}</style></head><body>' + buildSignatureHtml(next, artwork) + '</body></html>';
+  }).catch(() => {
+    if (!frame.isConnected) return;
+    signaturePreviewObserver.disconnect();
+    preview.innerHTML = '<p role="status">No se pudo cargar el diseño de la firma.</p>';
+  });
 }
 
 function signatureFileStem(value) {
