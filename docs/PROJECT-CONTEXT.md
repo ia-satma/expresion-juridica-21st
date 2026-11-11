@@ -11,6 +11,7 @@ Actualizado el 2026-11-10. Este documento reúne las decisiones vigentes del sit
 - Replit del cliente: `https://replit.com/t/expresion-juridica/repls/expresion-juridica-21st-2`. La instancia histórica es `https://expresion-juridica-21-st.replit.app/`.
 - El procedimiento de aprovisionamiento y recuperación está en [REPLIT-TRANSFER.md](REPLIT-TRANSFER.md). El código de persistencia y manejo de límites de IA quedó en `1715f53`.
 - El despliegue público usa `63df2ab`. Después de republicar se verificaron el propietario y la sesión existentes, las miniaturas de presentaciones y el acceso público a los recursos de firma. El secreto temporal de recuperación se retiró.
+- El acceso multidominio quedó en `9b0f52d`. Better Auth y el middleware comparten `server/auth-hosts.mjs`, aceptan los tres dominios conectados y permiten patrones controlados como `*.cliente.example` mediante `CMS_AUTH_ALLOWED_HOSTS`. Un host desconocido sigue rechazado.
 - Los archivos originales proporcionados por el cliente (`1.jpeg`, `2.jpeg`, `Hoja membretada.pdf` y `documentos /`) permanecen fuera de los commits de código.
 
 ## Marca y contacto
