@@ -104,3 +104,10 @@ Todos pasan en el corte actual. Los commits de esta etapa son `e5de34c` (membret
 Antes de sincronizar cambios completos desde GitHub a Replit, conservar el `server/index.mjs` remoto si contiene personalizaciones de autenticación y persistencia. Aplicar parches de ancla exacta y ejecutar las regresiones. No incluir Secrets, bases SQLite, JSON de producción, TTF/EOT privados ni los archivos de referencia del cliente en commits de código.
 
 El procedimiento de cambio de cuenta está en [`docs/REPLIT-TRANSFER.md`](./REPLIT-TRANSFER.md). El preflight reproducible es `node scripts/check-replit-transfer.mjs`; cubre Node, Cloud Run, scope de datos, Secrets, App Storage y exclusión de datos de producción.
+
+### Prueba real de generación con fotografías (2026-11-10)
+
+- La presentación real sin imágenes completó el flujo de Sol, composición, guardado y exportación. Se generaron 5 diapositivas (3 de contenido + apertura y cierre institucionales) y el PPTX descargó correctamente con 4.3 MB; el PDF renderizó 5 páginas y conservó texto, logotipo y correo.
+- Una prueba separada con `Ilustrar con imágenes generadas por IA` activado llegó al paso `Imágenes` y recibió `OPENAI_RATE_LIMIT_EXCEEDED`. Esto confirma un límite temporal del endpoint de imágenes de OpenAI, separado del saldo monetario y de la llamada de texto.
+- `server/openai-service-tier.mjs` ahora conserva la cola global y, para `/images/generations`, respeta `Retry-After` hasta 120 segundos y aplica una espera inicial más prudente si el proveedor no envía cabecera. La cuota no se presenta como disponible cuando el proveedor responde un límite.
+- El cambio quedó en `e0bd62b`, pasó `node scripts/check-openai-service-tier.mjs` y fue republicado en Replit; Publishing muestra `Live` con historial `88e44aaa`.
