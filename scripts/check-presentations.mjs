@@ -25,6 +25,7 @@ res.end(JSON.stringify({model:'gpt-6.1-sol',status:'completed',output:[{type:'me
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 process.env.CMS_DATA_SCOPE='presentation-check';process.env.OPENAI_API_KEY='test-placeholder';process.env.OPENAI_BASE_URL=`http://127.0.0.1:${server.address().port}`;
 for(const key of ['REPL_ID','REPLIT_DEV_DOMAIN','REPLIT_DEPLOYMENT_URL','REPLIT_OBJECT_STORAGE_BUCKET_ID','DEFAULT_OBJECT_STORAGE_BUCKET_ID','OPENAI_IMAGE_MODEL'])delete process.env[key];
+process.env.OPENAI_IMAGE_MIN_REQUEST_INTERVAL_MS='0';
 try{
 const {generatePresentation}=await import(pathToFileURL(path.join(root,'server/presentation-generator.mjs')));
 const progress=[];const a=await generatePresentation({topic:fixture,sourceText:prepared.sourceText,slideCount:3,supportImages:prepared.supportImages,includeImage:true,includeVisuals:true,formats:['pptx','pdf','png']},(message,completed,total,stage)=>progress.push({message,completed,total,stage}));

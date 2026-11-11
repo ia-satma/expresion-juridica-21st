@@ -11,14 +11,18 @@ const QUOTA_ERRORS=new Set([
 ]);
 let requestTail = Promise.resolve();
 let lastRequestStartedAt = 0;
-const requestIntervalMs = () => Math.max(0, Number(process.env.OPENAI_MIN_REQUEST_INTERVAL_MS || 700));
-async function sendThroughQueue(send, payload, signal, retryUntil = Infinity) {
+const requestIntervalMs = endpoint => {
+  const standard = Math.max(0, Number(process.env.OPENAI_MIN_REQUEST_INTERVAL_MS || 700));
+  const image = Math.max(standard, Number(process.env.OPENAI_IMAGE_MIN_REQUEST_INTERVAL_MS || 12000));
+  return isImageEndpoint(endpoint) ? image : standard;
+};
+async function sendThroughQueue(endpoint, send, payload, signal, retryUntil = Infinity) {
   const previous = requestTail;
   let release;
   requestTail = new Promise(resolve => { release = resolve; });
   await previous;
   try {
-    const wait = Math.max(0, requestIntervalMs() - (Date.now() - lastRequestStartedAt));
+    const wait = Math.max(0, requestIntervalMs(endpoint) - (Date.now() - lastRequestStartedAt));
     if (wait && Date.now() + wait < retryUntil) await sleep(wait, undefined, { signal });
     lastRequestStartedAt = Date.now();
     return await send(payload);
@@ -75,29 +79,33 @@ function providerFailure(status,result,retryAfter) {
   if (Number.isFinite(seconds) && seconds > 0) failure.retryAfterSeconds = Math.ceil(seconds);
   return failure;
 }
-function retryDelay(response, endpoint) {
+function retryDelay(response, endpoint, attempt) {
   if (response.ok || !isTemporaryCapacityError(response.status, response.result)) return null;
   const header = response.retryAfter?.trim();
   const advisedDelay = !header ? NaN
     : /^\d+(?:\.\d+)?$/.test(header) ? Number(header) * 1_000 : Date.parse(header) - Date.now();
+  const image = isImageEndpoint(endpoint);
+  const minimum = image ? requestIntervalMs(endpoint) : 750;
+  const exponential = (image ? 1 : 0) + (2 ** attempt) * (image ? 3_000 : 750);
+  const fallback = minimum + exponential + Math.random() * (image ? 1_000 : 250);
   // Image generation can advertise a longer provider cooldown than text. Honor
-  // it up to the request timeout so the UI does not fail while the queue cools.
-  const delay = Number.isNaN(advisedDelay)
-    ? (isImageEndpoint(endpoint) ? 3_000 + Math.random() * 1_000 : 750 + Math.random() * 250)
-    : Math.max(0, advisedDelay);
+  // it up to the request timeout while keeping retries spaced apart when the
+  // provider omits Retry-After.
+  const delay = Number.isNaN(advisedDelay) ? fallback : Math.max(minimum, advisedDelay);
   return delay <= (isImageEndpoint(endpoint) ? 120_000 : 30_000) ? delay : null;
 }
 export async function requestWithTextServiceTier(endpoint,body,send,{env=process.env,signal,retryUntil=Infinity}={}) {
   const text=isTextEndpoint(endpoint),requested=text?textServiceTier(env):null;
   const requestedBody=applyTextServiceTier(endpoint,body,env);
-  let retried = false;
+  const maxRetries = isImageEndpoint(endpoint) ? 3 : 1;
   async function execute(payload) {
-    const response = await sendThroughQueue(send, payload, signal, retryUntil);
-    const delay = retried ? null : retryDelay(response, endpoint);
-    if (delay === null || Date.now() + delay >= retryUntil) return response;
-    retried = true;
-    await sleep(delay, undefined, { signal });
-    return sendThroughQueue(send, payload, signal, retryUntil);
+    for (let attempt = 0; ; attempt++) {
+      const response = await sendThroughQueue(endpoint, send, payload, signal, retryUntil);
+      if (attempt >= maxRetries) return response;
+      const delay = retryDelay(response, endpoint, attempt);
+      if (delay === null || Date.now() + delay >= retryUntil) return response;
+      await sleep(delay, undefined, { signal });
+    }
   }
   let response=await execute(requestedBody),fallback=false;
   if(!response.ok&&shouldRetryStandardTier(endpoint,requestedBody,response.status,response.result)) {

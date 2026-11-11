@@ -230,13 +230,11 @@ export async function generateSocialSet({topic='',sourceText='',count=1,size='po
   }
   if(includeImages&&written.aiUsed) {
     const pending=record.posts.map((_,index)=>index).filter(index=>!record.posts[index].artwork);
-    for(let start=0;start<pending.length;start+=2) {
-      progress(`Generando fotografías de apoyo · ${start+1} de ${pending.length}`,start,pending.length,'images');
-      const batch=await Promise.allSettled(pending.slice(start,start+2).map(async index=>{
-        const image=await makeArtwork(record.posts[index],record.title);
-        record.posts[index].artwork={...await saveFile(record.id,`apoyo-${index+1}.png`,image),aiGenerated:true};record.generatedImageCount++;record.imageModel=socialModels().imageModel;await checkpoint(record);
-      }));
-      const failure=batch.find(item=>item.status==='rejected');if(failure)throw failure.reason;
+    for(let completed=0;completed<pending.length;completed++) {
+      const index=pending[completed];
+      progress(`Generando fotografías de apoyo · ${completed+1} de ${pending.length}`,completed,pending.length,'images');
+      const image=await makeArtwork(record.posts[index],record.title);
+      record.posts[index].artwork={...await saveFile(record.id,`apoyo-${index+1}.png`,image),aiGenerated:true};record.generatedImageCount++;record.imageModel=socialModels().imageModel;await checkpoint(record);
     }
   }
   record.posts.forEach((post,index)=>{if(post.artwork&&!PHOTO_LAYOUTS.includes(post.layout)&&post.design?.imagePosition!=='background'){let candidate=index%PHOTO_LAYOUTS.length;if(record.posts[index-1]?.layout===PHOTO_LAYOUTS[candidate])candidate=(candidate+1)%PHOTO_LAYOUTS.length;post.layout=PHOTO_LAYOUTS[candidate];}});

@@ -25,7 +25,7 @@ const root=process.cwd(),temporary=await fs.mkdtemp(path.join(os.tmpdir(),'ej-fa
 const cases=new Map();
 const mock=http.createServer(async(req,res)=>{
   let raw='';for await(const chunk of req)raw+=chunk;
-  const body=JSON.parse(raw),name=body.input||'chat-or-image';requests.push({endpoint:req.url,body});cases.set(name,(cases.get(name)||0)+1);
+  const body=JSON.parse(raw),name=body.input||body.prompt||'chat-or-image';requests.push({endpoint:req.url,body});cases.set(name,(cases.get(name)||0)+1);
   res.setHeader('content-type','application/json');
   if(name==='invalid-json')return res.end('fixture-private-provider-body');
   if(name==='timeout'){await new Promise(resolve=>setTimeout(resolve,1000));if(res.destroyed)return;}
@@ -50,7 +50,8 @@ const mock=http.createServer(async(req,res)=>{
     res.setHeader('retry-after', '0');
     status = 429; result = { error: { code: 'project_spend_limit_exceeded', type: 'insufficient_quota' } };
   }
-  if(req.url==='/images/generations')result={data:[{b64_json:'Zml4dHVyZQ=='}]};
+  if(req.url==='/images/generations'&&name==='retry-image'&&cases.get(name)===1){res.setHeader('retry-after','0');status=429;result={error:{code:'rate_limit_exceeded'}};}
+  else if(req.url==='/images/generations')result={data:[{b64_json:'Zml4dHVyZQ=='}]};
   res.statusCode=status;res.end(JSON.stringify(result));
 });
 await new Promise(resolve=>mock.listen(0,'127.0.0.1',resolve));
@@ -58,6 +59,7 @@ try {
   // Empty isolated cwd keeps legacy migration away from the developer's real data.
   process.chdir(temporary);process.env.CMS_DATA_SCOPE='isolated-fast-tier-check';process.env.OPENAI_API_KEY='test-placeholder';process.env.OPENAI_BASE_URL=`http://127.0.0.1:${mock.address().port}`;delete process.env.OPENAI_TEXT_SERVICE_TIER;
   for(const name of ['REPL_ID','REPLIT_DEPLOYMENT_URL','REPLIT_DEV_DOMAIN','REPLIT_OBJECT_STORAGE_BUCKET_ID','DEFAULT_OBJECT_STORAGE_BUCKET_ID','OPENAI_IMAGE_MODEL'])delete process.env[name];
+  process.env.OPENAI_IMAGE_MIN_REQUEST_INTERVAL_MS='0';
   const {openaiRequest,presentationModels}=await import(pathToFileURL(path.join(root,'server/presentation-generator.mjs')));assert.equal(presentationModels().textServiceTier,'fast');assert.equal(presentationModels().imageModel,'gpt-image-2.5-sunburst');
   process.env.OPENAI_IMAGE_MODEL='gpt-image-2.5-flare';assert.equal(presentationModels().imageModel,'gpt-image-2.5-flare');process.env.OPENAI_IMAGE_MODEL='gpt-image-2';assert.equal(presentationModels().imageModel,'gpt-image-2');delete process.env.OPENAI_IMAGE_MODEL;assert.equal(presentationModels().imageModel,'gpt-image-2.5-sunburst');
   const fast=await openaiRequest('/responses',{...textBody,input:'fast'});assert.deepEqual(fast.serviceTier,{requested:'fast',served:'fast',fallback:false});assert.equal(fast.service_tier,'fast');
@@ -84,6 +86,7 @@ try {
   await assert.rejects(()=>openaiRequest('/responses',{...textBody,input:'invalid-json'}),/OPENAI_RESPONSE_INVALID/);assert.equal(cases.get('invalid-json'),1);
   await assert.rejects(()=>openaiRequest('/responses',{...textBody,input:'timeout'},200),/OPENAI_TIMEOUT/);assert.equal(cases.get('timeout'),1);
   const image=await openaiRequest('/images/generations',imageBody);assert.deepEqual(requests.at(-1).body,imageBody);assert(!Object.hasOwn(image,'serviceTier'));assert(!Object.hasOwn(image,'service_tier'));
+  const retriedImage=await openaiRequest('/images/generations',{...imageBody,prompt:'retry-image'});assert.deepEqual(retriedImage.data,[{b64_json:'Zml4dHVyZQ=='}]);assert.equal(cases.get('retry-image'),2);
   assert(requests.filter(item=>isTextEndpoint(item.endpoint)).every(item=>item.body.model==='gpt-6.1-sol'));
   const {normalizeSocialDesign,socialDesignSchema}=await import(pathToFileURL(path.join(root,'server/social-design.mjs')));
   assert.deepEqual(normalizeSocialDesign({},'editorial'),{palette:'editorial',spacing:'balanced',headlineScale:'balanced',background:'solid',imagePosition:'auto',imageShare:'balanced',align:'left',panel:'plain'});

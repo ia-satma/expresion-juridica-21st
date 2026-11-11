@@ -64,6 +64,7 @@ await new Promise(resolve => mock.listen(0, '127.0.0.1', resolve));
 process.env.CMS_DATA_SCOPE = `social-check-${Date.now()}`; process.env.OPENAI_API_KEY = 'test-placeholder'; process.env.OPENAI_BASE_URL = `http://127.0.0.1:${mock.address().port}`;
 process.env.OPENAI_TEXT_SERVICE_TIER='fast';
 for(const key of ['REPL_ID','REPLIT_DEPLOYMENT_URL','REPLIT_DEV_DOMAIN','REPLIT_OBJECT_STORAGE_BUCKET_ID','DEFAULT_OBJECT_STORAGE_BUCKET_ID','OPENAI_IMAGE_MODEL'])delete process.env[key];
+process.env.OPENAI_IMAGE_MIN_REQUEST_INTERVAL_MS='0';
 const { registerSocialRoutes } = await import('../server/social-routes.mjs');
 const {renderSocialSet,readSocialFile,SOCIAL_DIR}=await import('../server/social-generator.mjs');
 const {composeSocialPiece,loadSocialTypography,svgSocialCanvas}=await import('../server/social-compositor.mjs');

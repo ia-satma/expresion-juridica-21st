@@ -254,10 +254,11 @@ export async function generatePresentation({ topic = '', sourceText = '', slideC
   if (includeVisuals) supportImages.slice(0, count - 1).forEach((image, i) => artworkBySlide.set(i, image.buffer));
   if (includeVisuals && includeImage && result.aiUsed) {
     const pending = candidates.filter(i => !artworkBySlide.has(i)).slice(0, 4);
-    for (let start = 0; start < pending.length; start += 2) {
-      progress(`Generando fotografías documentales · ${start+1} de ${pending.length}`,start,pending.length,'images');
-      const batch = await Promise.all(pending.slice(start, start + 2).map(async i => ({ index: i, ...await generateSlideImage(data, data.slides[i]) })));
-      for (const image of batch) { artworkBySlide.set(image.index, image.buffer); generated.push(image); }
+    for (let completed = 0; completed < pending.length; completed++) {
+      const index = pending[completed];
+      progress(`Generando fotografías documentales · ${completed + 1} de ${pending.length}`,completed,pending.length,'images');
+      const image = { index, ...await generateSlideImage(data, data.slides[index]) };
+      artworkBySlide.set(image.index, image.buffer); generated.push(image);
     }
   }
   const contentScenes = data.slides.map((slide, i) => sceneFor(slide, i, count, { assets, metrics, artwork: artworkBySlide.get(i), style, branding }));
