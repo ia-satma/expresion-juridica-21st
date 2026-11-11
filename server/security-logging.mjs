@@ -7,6 +7,7 @@ const codes = new Set([
   'AUTH_REQUIRED', 'CSRF_INVALID', 'ORIGIN_NOT_ALLOWED', 'ROLE_REQUIRED', 'OWNER_REQUIRED', 'PASSWORD_CHANGE_REQUIRED',
   'CMS_STORE_INVALID', 'AUTH_DATABASE_URL_REQUIRED', 'AUTH_STABLE_SECRET_REQUIRED', 'CMS_OWNER_BOOTSTRAP_REQUIRED',
   'CMS_OWNER_BOOTSTRAP_OWNER_MISMATCH', 'CMS_OWNER_BOOTSTRAP_DATABASE_OCCUPIED', 'CMS_OWNER_BOOTSTRAP_PASSWORD_INVALID',
+  'USER_ALREADY_AUTHORIZED',
   'MEDIA_TYPE_NOT_ALLOWED', 'LIMIT_FILE_SIZE', 'LIMIT_FILE_COUNT', 'LIMIT_UNEXPECTED_FILE', 'INVALID_REQUEST', 'CONTACT_FIELDS_INVALID',
   'PRESENTATION_INPUT_INVALID', 'PRESENTATION_FILES_TOO_LARGE', 'PRESENTATION_GENERATION_FAILED', 'PRESENTATION_FILE_NOT_FOUND',
   'OPENAI_TIMEOUT', 'OPENAI_OUTPUT_INCOMPLETE', 'OPENAI_SLIDE_COUNT_INVALID', 'OPENAI_INVALID_API_KEY', 'OPENAI_INSUFFICIENT_QUOTA',
@@ -68,6 +69,7 @@ export function publicFailure(error, fallback = 'INTERNAL_ERROR') {
   else if (['ROLE_REQUIRED','OWNER_REQUIRED'].includes(code)) detail = 'Tu cuenta no tiene permiso para realizar esta acción.';
   else if (code === 'CSRF_INVALID') detail = 'Actualiza el apartado y vuelve a guardar.';
   else if (code === 'ORIGIN_NOT_ALLOWED') detail = 'Abre el CMS desde la dirección oficial del sitio.';
+  else if (code === 'USER_ALREADY_AUTHORIZED') detail = 'Ese correo ya tiene una cuenta en el CMS. Restaura el acceso archivado o usa otro correo.';
   else if (code === 'PRESENTATION_FILE_NOT_FOUND') detail = 'Este archivo no está disponible. Vuelve a generar la presentación para crear la descarga.';
   else if (code === 'POST_JOB_INTERRUPTED' || code === 'STUDIO_JOB_INTERRUPTED') detail = 'La generación se interrumpió. Puedes volver a intentarlo.';
   else if (/VERSION_CHANGED$/.test(code)) detail = 'El contenido cambió en otra edición. Abre la versión más reciente.';

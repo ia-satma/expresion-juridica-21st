@@ -6,7 +6,7 @@ import express from 'express';
 import multer from 'multer';
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
 import { buildInventory, fileForRoute, inventoryHtml, routeFromFile, SITE_DIR } from './inventory.mjs';
-import { auth, authDatabase, authUsesPostgres, hasAuthUsers, migrateAuthDatabase, setAuthUserRole } from './auth.mjs';
+import { auth, authDatabase, authUsesPostgres, findAuthUserByEmail, hasAuthUsers, migrateAuthDatabase, setAuthUserRole } from './auth.mjs';
 import { recoverExistingOwner } from './owner-recovery.mjs';
 import { DATA_DIR, DATA_SCOPE, MEDIA_DIR, STORE_FILE } from './data-paths.mjs';
 import { appStorageEnabled, appStorageScope, deleteFile as deleteStorageFile, downloadFile as downloadStorageFile, removeLocalFile, uploadFile as uploadStorageFile } from './app-storage.mjs';
@@ -1301,6 +1301,35 @@ app.post('/api/cms/users', requireAuth, requireOwner, requireCsrf, async (req, r
     if (!email || !name || !/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'USER_FIELDS_INVALID' });
     const existingCmsAccess = store.authAdmins.find((admin) => emailKey(admin.email) === email && !admin.banned);
     if (existingCmsAccess) return res.status(409).json({ error: 'USER_ALREADY_AUTHORIZED' });
+    // Better Auth archives users by banning them. Creating the same email again
+    // otherwise raises USER_ALREADY_EXISTS even though the CMS entry is archived.
+    // Restore that account in place and issue a fresh temporary password.
+    await syncBetterAuthRole(req.cmsUser.id, 'owner');
+    const existingAuthUser = await findAuthUserByEmail(email);
+    const archivedCmsAccess = existingAuthUser?.id
+      ? store.authAdmins.find((admin) => admin.userId === existingAuthUser.id && (admin.banned || admin.deletedAt))
+      : null;
+    if (archivedCmsAccess) {
+      const password = temporaryPassword();
+      const headers = fromNodeHeaders(req.headers);
+      await auth.api.setUserPassword({ body: { userId: existingAuthUser.id, newPassword: password }, headers });
+      await auth.api.unbanUser({ body: { userId: existingAuthUser.id }, headers });
+      await setAuthUserRole(existingAuthUser.id, authRoleForCmsRole(role));
+      archivedCmsAccess.email = email;
+      archivedCmsAccess.name = name;
+      archivedCmsAccess.role = role;
+      archivedCmsAccess.banned = false;
+      archivedCmsAccess.deletedAt = null;
+      archivedCmsAccess.banReason = '';
+      archivedCmsAccess.mustChangePassword = true;
+      archivedCmsAccess.updatedAt = now();
+      const restored = await auth.api.getUser({ query: { id: existingAuthUser.id }, headers });
+      const user = restored?.user || restored || { ...existingAuthUser, name, role: authRoleForCmsRole(role) };
+      audit('auth.user.recreate', req.cmsUser, { userId: existingAuthUser.id, email, role });
+      await writeStore();
+      return res.status(201).json({ user: userPayload({ ...user, role: authRoleForCmsRole(role) }), temporaryPassword: password });
+    }
+    if (existingAuthUser) return res.status(409).json({ error: 'USER_ALREADY_AUTHORIZED' });
     const password = temporaryPassword();
     const result = await auth.api.createUser({
       body: { email, name, password, role: authRoleForCmsRole(role) },
