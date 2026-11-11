@@ -19,7 +19,7 @@ Configura estos valores en Secrets o Configuration de Replit.
 
 - `BETTER_AUTH_SECRET` con al menos 32 caracteres aleatorios.
 - `BETTER_AUTH_URL` con la URL publicada en la cuenta del cliente.
-- `CMS_AUTH_ALLOWED_HOSTS` con los hosts públicos conectados, separados por comas. Incluye el dominio raíz, `www` y el dominio `replit.app`. Añade cada dominio nuevo aquí antes de republicar.
+- `CMS_AUTH_ALLOWED_HOSTS` con los hosts públicos conectados, separados por comas. Incluye el dominio raíz, `www` y el dominio `replit.app`. Acepta patrones como `*.cliente.example` para subdominios controlados. Añade cada dominio nuevo aquí antes de republicar.
 - `CMS_OWNER_EMAIL` con la cuenta propietaria del cliente.
 - `CMS_DATA_SCOPE=production` en el Deployment.
 - `CMS_AUTH_STORAGE=postgres` solo en el Deployment. Replit inyecta `DATABASE_URL` cuando se aprovisiona PostgreSQL de producción. Para otra base PostgreSQL, usa `CMS_AUTH_DATABASE_URL` como secreto.

@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { load } from 'cheerio';
 import { publicFailure, withLogContext } from './security-logging.mjs';
-import { authAllowedOrigins } from './auth-hosts.mjs';
+import { authOriginAllowed } from './auth-hosts.mjs';
 
 export function hostedHttps(env = process.env) {
   return env.NODE_ENV === 'production' || Boolean(env.REPL_ID || env.REPLIT_DEPLOYMENT_URL || env.REPLIT_DEV_DOMAIN) || /^https:\/\//i.test(env.BETTER_AUTH_URL || '');
@@ -51,7 +51,6 @@ function origin(value) { try { return new URL(value).origin; } catch { return nu
 
 export function securityMiddleware({ root = process.cwd(), getCanonicalBase = () => 'https://expresion-juridica-21-st.replit.app', env = process.env } = {}) {
   const secure = hostedHttps(env), policy = contentSecurityPolicy(root, secure);
-  const configuredOrigins = authAllowedOrigins(env);
   return (req, res, next) => {
     const privateRoute = /^\/(?:admin|api)(?:\/|$)/.test(req.path) && req.path !== '/api/cms/public' && req.path !== '/api/public/contact';
     const setHeader = res.setHeader.bind(res);
@@ -79,9 +78,8 @@ export function securityMiddleware({ root = process.cwd(), getCanonicalBase = ()
     };
     return withLogContext(requestId, () => {
       if (req.path.startsWith('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-        const allowed = new Set([...configuredOrigins, origin(getCanonicalBase())].filter(Boolean));
         const suppliedOrigin = req.get('origin');
-        if (req.get('sec-fetch-site') === 'cross-site' || suppliedOrigin && !allowed.has(origin(suppliedOrigin))) return res.status(403).json(publicFailure('ORIGIN_NOT_ALLOWED'));
+        if (req.get('sec-fetch-site') === 'cross-site' || suppliedOrigin && !authOriginAllowed(suppliedOrigin, env)) return res.status(403).json(publicFailure('ORIGIN_NOT_ALLOWED'));
       }
       return next();
     });

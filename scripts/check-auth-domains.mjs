@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { resolveDynamicBaseURL } from 'better-auth';
-import { authAllowedHosts, authAllowedOrigins } from '../server/auth-hosts.mjs';
+import { authAllowedHosts, authAllowedOrigins, authOriginAllowed } from '../server/auth-hosts.mjs';
 
 const env = {
   NODE_ENV: 'production',
@@ -22,4 +22,6 @@ assert.throws(() => resolveDynamicBaseURL(config, new Request('https://evil.exam
 const origins = authAllowedOrigins(env);
 assert(origins.includes('https://expresionjuridica.com'));
 assert(origins.includes('https://cliente.example'));
+assert(authOriginAllowed('https://www.cliente.example', { ...env, CMS_AUTH_ALLOWED_HOSTS: '*.cliente.example' }));
+assert(!authOriginAllowed('https://cliente.example.evil.test', { ...env, CMS_AUTH_ALLOWED_HOSTS: '*.cliente.example' }));
 console.log(JSON.stringify({ passed: true, customHosts: 4, unknownHostsRejected: true, dynamicOrigins: origins.length }));

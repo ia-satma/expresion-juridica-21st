@@ -39,3 +39,20 @@ export function authAllowedOrigins(env = process.env) {
     return origins;
   });
 }
+
+function hostMatchesPattern(host, pattern) {
+  if (!pattern.includes('*') && !pattern.includes('?')) return host === pattern;
+  const expression = new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^./]+').replace(/\?/g, '[^./]')}$`, 'i');
+  return expression.test(host);
+}
+
+export function authOriginAllowed(value, env = process.env) {
+  try {
+    const parsed = new URL(value);
+    const host = parsed.host.toLowerCase();
+    const protocolAllowed = parsed.protocol === 'https:' || (parsed.protocol === 'http:' && /^(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(host));
+    return protocolAllowed && authAllowedHosts(env).some(pattern => hostMatchesPattern(host, pattern));
+  } catch {
+    return false;
+  }
+}
