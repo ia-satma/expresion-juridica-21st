@@ -111,6 +111,9 @@ async function makeArtwork(post, title) {
   if (!result.data?.[0]?.b64_json) throw new Error('OPENAI_IMAGE_EMPTY');
   return sharp(Buffer.from(result.data[0].b64_json, 'base64')).resize(1400, 1000, { fit: 'cover' }).png().toBuffer();
 }
+function isImageCapacityError(error) {
+  return ['OPENAI_RATE_LIMIT_EXCEEDED', 'OPENAI_INSUFFICIENT_QUOTA', 'OPENAI_HTTP_429'].includes(error?.message);
+}
 const emptyFiles=()=>({png:[],html:[],pack:null,copy:null});
 function sourceLinks(...materials) {
   const found=[];
@@ -233,8 +236,15 @@ export async function generateSocialSet({topic='',sourceText='',count=1,size='po
     for(let completed=0;completed<pending.length;completed++) {
       const index=pending[completed];
       progress(`Generando fotografías de apoyo · ${completed+1} de ${pending.length}`,completed,pending.length,'images');
-      const image=await makeArtwork(record.posts[index],record.title);
-      record.posts[index].artwork={...await saveFile(record.id,`apoyo-${index+1}.png`,image),aiGenerated:true};record.generatedImageCount++;record.imageModel=socialModels().imageModel;await checkpoint(record);
+      try {
+        const image=await makeArtwork(record.posts[index],record.title);
+        record.posts[index].artwork={...await saveFile(record.id,`apoyo-${index+1}.png`,image),aiGenerated:true};record.generatedImageCount++;record.imageModel=socialModels().imageModel;await checkpoint(record);
+      } catch (error) {
+        if (!isImageCapacityError(error)) throw error;
+        record.imageWarning='Las fotografías de IA no están disponibles con el límite actual del proyecto. Puedes subir imágenes de apoyo y el diseño se conservará.';
+        await checkpoint(record);
+        break;
+      }
     }
   }
   record.posts.forEach((post,index)=>{if(post.artwork&&!PHOTO_LAYOUTS.includes(post.layout)&&post.design?.imagePosition!=='background'){let candidate=index%PHOTO_LAYOUTS.length;if(record.posts[index-1]?.layout===PHOTO_LAYOUTS[candidate])candidate=(candidate+1)%PHOTO_LAYOUTS.length;post.layout=PHOTO_LAYOUTS[candidate];}});

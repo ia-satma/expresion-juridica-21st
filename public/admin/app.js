@@ -1132,7 +1132,7 @@ function renderPresentationResult(presentation) {
   const result = $('#presentation-result');
   result.hidden = false;
   $('#presentation-result-title').textContent = presentation.title || 'Presentación lista';
-  $('#presentation-result-meta').textContent = `${presentationSlideLabel(presentation)} · ${formatDate(presentation.createdAt)} · ${presentationStatus(presentation)}. Revisa el contenido antes de compartirlo.`;
+  $('#presentation-result-meta').textContent = `${presentationSlideLabel(presentation)} · ${formatDate(presentation.createdAt)} · ${presentationStatus(presentation)}${presentation.warning ? `. ${presentation.warning}` : '. Revisa el contenido antes de compartirlo.'}`;
   for (const [kind, suffix] of [['pptx', 'pptx'], ['pdf', 'pdf'], ['imagesZip', 'images'], ['artwork', 'artwork']]) {
     const link = $(`#presentation-download-${suffix}`);
     link.hidden = !presentation.files?.[kind];

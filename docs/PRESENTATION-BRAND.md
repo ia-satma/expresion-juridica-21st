@@ -22,7 +22,7 @@ Después de reemplazar los TTF, ejecutar `python3 scripts/build-presentation-fon
 
 ## Generación y entradas
 
-Contenido: `gpt-6.1-sol`, configurable con `OPENAI_PRESENTATION_MODEL`, con `service_tier: "fast"` solicitado para llamadas de texto. Imágenes: `gpt-image-2.5-sunburst`, configurable con `OPENAI_IMAGE_MODEL`. La clave se lee de `OPENAI_API_KEY` en Secrets; nunca se entrega al navegador. La búsqueda web es opcional mediante Responses API; se muestran fuentes consultadas. Sin clave, el resultado queda identificado como prueba sin IA.
+Contenido: `gpt-6.1-sol`, configurable con `OPENAI_PRESENTATION_MODEL`, con `service_tier: "fast"` solicitado para llamadas de texto. Imágenes: `gpt-image-2.5-sunburst`, configurable con `OPENAI_IMAGE_MODEL`. La clave de texto se lee de `OPENAI_API_KEY` en Secrets; opcionalmente `OPENAI_IMAGE_API_KEY` reemplaza la clave solo para imágenes. Ninguna clave se entrega al navegador. La búsqueda web es opcional mediante Responses API; se muestran fuentes consultadas. Sin clave, el resultado queda identificado como prueba sin IA.
 
 Se admiten hasta 20 documentos PDF con texto, DOCX, TXT o Markdown y 10 imágenes PNG/JPG/WebP. Máximo 100 MB por archivo y 200 MB por solicitud. El texto combinado admite 120 000 caracteres; PDF, hasta 150 páginas. No se ofrece OCR. Las copias temporales se eliminan al concluir o fallar la solicitud. Las imágenes aportadas tienen prioridad; se generan como máximo cuatro imágenes de IA. Los diagramas se dibujan de forma nativa sin llamadas al modelo de imágenes.
 

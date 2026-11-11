@@ -19,7 +19,7 @@ const clean = (value, max = 10000) => String(value ?? '').replace(/\u0000/g, '')
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
 const slug = value => clean(value, 100).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 55) || 'presentacion';
 export function presentationModels() {
-  return { aiConfigured: Boolean(process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY), textModel: process.env.OPENAI_PRESENTATION_MODEL || 'gpt-6.1-sol', textServiceTier:configuredTextServiceTier(), imageModel: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst', skill: EDITORIAL_SKILL_ID, brand: { id: B.id, name: B.name, headingFont: 'Libre Caslon Text Italic', bodyFont: 'Bahnschrift Light', colors: [B.navy, B.night, B.gold, B.gray, B.paper] } };
+  return { aiConfigured: Boolean(process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY), imageApiConfigured: Boolean(process.env.OPENAI_IMAGE_API_KEY || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY), textModel: process.env.OPENAI_PRESENTATION_MODEL || 'gpt-6.1-sol', textServiceTier:configuredTextServiceTier(), imageModel: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst', skill: EDITORIAL_SKILL_ID, brand: { id: B.id, name: B.name, headingFont: 'Libre Caslon Text Italic', bodyFont: 'Bahnschrift Light', colors: [B.navy, B.night, B.gold, B.gray, B.paper] } };
 }
 const visualSchema = { type: 'object', additionalProperties: false, properties: { type: { type: 'string', enum: ['none', 'process', 'bar', 'image'] }, labels: { type: 'array', maxItems: 5, items: { type: 'string' } }, values: { type: 'array', maxItems: 5, items: { type: 'number' } } }, required: ['type', 'labels', 'values'] };
 const schema = { type: 'object', additionalProperties: false, properties: { title: { type: 'string' }, subtitle: { type: 'string' }, imageContext: { type: 'string' }, slides: { type: 'array', minItems: 3, maxItems: 20, items: { type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['title', 'content', 'closing'] }, eyebrow: { type: 'string' }, title: { type: 'string' }, body: { type: 'string' }, bullets: { type: 'array', maxItems: 4, items: { type: 'string' } }, visual: visualSchema }, required: ['kind', 'eyebrow', 'title', 'body', 'bullets', 'visual'] } } }, required: ['title', 'subtitle', 'imageContext', 'slides'] };
@@ -36,7 +36,10 @@ function trialOutline(topic, source, count) {
   return { title: topic || 'Presentación de prueba', subtitle: 'Archivo de prueba · IA no utilizada', slides: Array.from({ length: count }, (_, i) => ({ kind: i === 0 ? 'title' : i === count - 1 ? 'closing' : 'content', eyebrow: 'EXPRESIÓN JURÍDICA', title: i === 0 ? topic || 'Presentación de prueba' : i === count - 1 ? 'Próximos pasos' : `Punto clave ${i}`, body: i === 0 ? 'Plantilla de prueba · IA no utilizada' : clean(source, 250) || 'Agrega tu material de apoyo para organizar el contenido.', bullets: [], visual: { type: 'none', labels: [], values: [] } })) };
 }
 export async function openaiRequest(endpoint, body, timeout = 120000) {
-  const key = process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+  const imageRequest = endpoint === '/images/generations';
+  const key = imageRequest
+    ? process.env.OPENAI_IMAGE_API_KEY || process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY
+    : process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
   const base = (process.env.OPENAI_BASE_URL || process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
   const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), timeout);
   const retryUntil = Date.now() + timeout - 1_000;
@@ -74,6 +77,9 @@ async function generateSlideImage(data, slide) {
   const result = await openaiRequest('/images/generations', { model, prompt, n: 1, size: '1536x1024', quality: 'medium', output_format: 'png' });
   if (!result.data?.[0]?.b64_json) throw new Error('OPENAI_IMAGE_EMPTY');
   return { buffer: await sharp(Buffer.from(result.data[0].b64_json, 'base64')).resize(1200, 800, { fit: 'cover' }).png().toBuffer(), model };
+}
+function isImageCapacityError(error) {
+  return ['OPENAI_RATE_LIMIT_EXCEEDED', 'OPENAI_INSUFFICIENT_QUOTA', 'OPENAI_HTTP_429'].includes(error?.message);
 }
 let metricsPromise;
 let bookendAssetsPromise;
@@ -252,13 +258,20 @@ export async function generatePresentation({ topic = '', sourceText = '', slideC
   const artworkBySlide = new Map(); const generated = [];
   const candidates = [0, ...data.slides.map((s, i) => i > 0 && s.kind === 'content' && s.visual.type === 'image' ? i : -1).filter(i => i >= 0)];
   if (includeVisuals) supportImages.slice(0, count - 1).forEach((image, i) => artworkBySlide.set(i, image.buffer));
+  let imageWarning = null;
   if (includeVisuals && includeImage && result.aiUsed) {
     const pending = candidates.filter(i => !artworkBySlide.has(i)).slice(0, 4);
     for (let completed = 0; completed < pending.length; completed++) {
       const index = pending[completed];
       progress(`Generando fotografías documentales · ${completed + 1} de ${pending.length}`,completed,pending.length,'images');
-      const image = { index, ...await generateSlideImage(data, data.slides[index]) };
-      artworkBySlide.set(image.index, image.buffer); generated.push(image);
+      try {
+        const image = { index, ...await generateSlideImage(data, data.slides[index]) };
+        artworkBySlide.set(image.index, image.buffer); generated.push(image);
+      } catch (error) {
+        if (!isImageCapacityError(error)) throw error;
+        imageWarning='Las fotografías de IA no están disponibles con el límite actual del proyecto. Puedes subir imágenes de apoyo y la presentación se conservará.';
+        break;
+      }
     }
   }
   const contentScenes = data.slides.map((slide, i) => sceneFor(slide, i, count, { assets, metrics, artwork: artworkBySlide.get(i), style, branding }));
@@ -273,7 +286,7 @@ export async function generatePresentation({ topic = '', sourceText = '', slideC
   if (selectedFormats.includes('png')) {exporting('Preparando la descarga de imágenes'); const zip = new JSZip(); pngs.forEach((png, i) => zip.file(`${name}-${String(i + 1).padStart(2, '0')}.png`, png)); files.imagesZip = await saveFile(id, `${name}-diapositivas.zip`, await zip.generateAsync({ type: 'nodebuffer' }));exported++; }
   if (generated.length){exporting('Guardando las fotografías generadas');files.artwork = await saveFile(id, `${name}-imagen-ia.png`, generated[0].buffer);exported++;}
   progress('Archivos preparados',exported,exportTotal,'export');
-  return { id, agentSkill: EDITORIAL_SKILL_ID, title: data.title, subtitle: data.subtitle, topic: clean(topic), sourceLength: clean(sourceText, 120000).length, language, style, branding, brandProfile: B.id, formats: selectedFormats, documentNames, uploadedImageCount: supportImages.length, includeVisuals, includeBookends, webSearch, sources: result.sources, slideCount: scenes.length, contentSlideCount: count, bookendSlides: includeBookends ? { opening: 1, closing: 1, version: 'ej-presentation-bookends-v1' } : null, aiUsed: result.aiUsed, model: result.model, serviceTier:result.serviceTier||null, imageUsed: Boolean(generated.length), imageModel: generated.length ? presentationModels().imageModel : null, generatedImageCount: generated.length, warning: result.warning, createdAt: new Date().toISOString(), outline: data, files };
+  return { id, agentSkill: EDITORIAL_SKILL_ID, title: data.title, subtitle: data.subtitle, topic: clean(topic), sourceLength: clean(sourceText, 120000).length, language, style, branding, brandProfile: B.id, formats: selectedFormats, documentNames, uploadedImageCount: supportImages.length, includeVisuals, includeBookends, webSearch, sources: result.sources, slideCount: scenes.length, contentSlideCount: count, bookendSlides: includeBookends ? { opening: 1, closing: 1, version: 'ej-presentation-bookends-v1' } : null, aiUsed: result.aiUsed, model: result.model, serviceTier:result.serviceTier||null, imageUsed: Boolean(generated.length), imageModel: generated.length ? presentationModels().imageModel : null, generatedImageCount: generated.length, warning: imageWarning || result.warning, createdAt: new Date().toISOString(), outline: data, files };
 }
 export function filePathForPresentation(file) { return file?.localPath ? path.join(process.cwd(), file.localPath) : null; }
 export function ensurePresentationDir() { fsSync.mkdirSync(WORK_DIR, { recursive: true }); return WORK_DIR; }
