@@ -1,4 +1,4 @@
-import { createContentEditor, pageTitle } from "./content-editor.js?v=20261103-editable3";
+import { createContentEditor, pageTitle } from "./content-editor.js?v=20261111-cms-help2";
 import { currentCmsCsrf } from "./csrf.js?v=20261102-studio2";
 import { createSocialStudio } from "./social.js?v=20261110-studio-errors";
 import { createDocumentStudio } from "./documents.js?v=20261111-cms-fixes";
@@ -263,17 +263,44 @@ function humanFieldLabel(field) {
   return kindLabel(field);
 }
 
+function fieldHelp(field) {
+  const label = humanFieldLabel(field);
+  if (kindLabel(field) === 'SEO' || label.includes('SEO')) return 'Texto que buscadores y redes pueden mostrar como resumen de esta página.';
+  if (['image', 'video', 'audio'].includes(field.kind)) return 'Recurso visual o audiovisual que puedes sustituir desde App Storage.';
+  if (field.attribute === 'href' || field.kind === 'link') return 'Dirección que se abrirá cuando una persona seleccione este enlace.';
+  if (field.attribute === 'alt') return 'Descripción para lectores de pantalla y para el contexto de la imagen.';
+  if (field.attribute === 'placeholder') return 'Ayuda breve que aparece dentro del campo antes de escribir.';
+  if (field.attribute === 'aria-label') return 'Nombre accesible para identificar este control.';
+  if (label === 'Título' || label === 'Título principal') return 'Encabezado visible de la sección. Resume la idea principal en pocas palabras.';
+  return 'Texto visible del sitio. Modifícalo, revisa la vista previa y guarda el cambio cuando esté listo.';
+}
+
+function homeSectionHelp(section) {
+  const key = String(section || '').toLowerCase();
+  if (key.includes('seo')) return 'Título, descripción y datos que ayudan a encontrar la portada.';
+  if (key.includes('header') || key.includes('cabecera')) return 'Navegación y accesos que aparecen en la parte superior.';
+  if (key.includes('footer') || key.includes('pie')) return 'Información institucional y enlaces del final del sitio.';
+  if (key.includes('contact') || key.includes('cierre') || key.includes('sede')) return 'Datos y llamadas de acción para solicitar una consulta.';
+  if (key.includes('área') || key.includes('area')) return 'Servicios jurídicos y formas de atención de la firma.';
+  if (key.includes('firma')) return 'Historia, identidad y presentación de Expresión Jurídica.';
+  if (key.includes('red')) return 'Red de especialistas y alcance de la firma.';
+  if (key.includes('trabaj')) return 'Método de trabajo y experiencia que se explica al visitante.';
+  if (key.includes('caso')) return 'Casos, experiencia y temas que muestran el trabajo de la firma.';
+  if (key.includes('análisis') || key.includes('analisis')) return 'Publicaciones y contenidos de análisis jurídico.';
+  return 'Campos editables de esta parte de la portada.';
+}
+
 function homeFieldCard(field) {
   const hasDraft = field.draftValue != null;
   const current = field.draftValue ?? field.publishedValue ?? field.original;
   const media = ['image', 'video', 'audio'].includes(field.kind);
-  return `<article class="home-field-card" data-field-card="${field.id}" data-field-search="${escapeHtml(`${humanFieldLabel(field)} ${field.section} ${field.original}`.toLowerCase())}" data-field-kind="${escapeHtml(field.kind)}"><div class="home-field-head"><div><strong>${escapeHtml(humanFieldLabel(field))}</strong></div><span class="field-kind">${escapeHtml(kindLabel(field))}</span></div>${media ? '<p class="home-field-hint">Este activo se puede reemplazar desde App Storage.</p>' : ''}${fieldInput({ ...field, draftValue: current, publishedValue: null })}<div class="home-field-foot"><span class="field-status ${hasDraft ? 'is-draft' : ''}">${hasDraft ? 'Borrador pendiente' : field.publishedValue != null ? 'Publicado desde CMS' : 'Original'}</span><div class="field-actions">${['owner', 'editor'].includes(state.user?.role) ? `<button class="mini-button home-reset-field" data-field-id="${field.id}" type="button">Restaurar</button><button class="mini-button home-save-field" data-field-id="${field.id}" type="button">Guardar</button>` : '<span class="field-status">Sólo lectura</span>'}</div></div></article>`;
+  return `<article class="home-field-card" data-field-card="${field.id}" data-field-search="${escapeHtml(`${humanFieldLabel(field)} ${field.section} ${field.original}`.toLowerCase())}" data-field-kind="${escapeHtml(field.kind)}"><div class="home-field-head"><div><strong>${escapeHtml(humanFieldLabel(field))}</strong><small class="home-field-description">${escapeHtml(fieldHelp(field))}</small></div><span class="field-kind">${escapeHtml(kindLabel(field))}</span></div>${media ? '<p class="home-field-hint">Este activo se puede reemplazar desde App Storage.</p>' : ''}${fieldInput({ ...field, draftValue: current, publishedValue: null })}<div class="home-field-foot"><span class="field-status ${hasDraft ? 'is-draft' : ''}">${hasDraft ? 'Borrador pendiente' : field.publishedValue != null ? 'Publicado desde CMS' : 'Original'}</span><div class="field-actions">${['owner', 'editor'].includes(state.user?.role) ? `<button class="mini-button home-reset-field" data-field-id="${field.id}" type="button">Restaurar</button><button class="mini-button home-save-field" data-field-id="${field.id}" type="button">Guardar</button>` : '<span class="field-status">Sólo lectura</span>'}</div></div></article>`;
 }
 
 function renderHomeEditor(fields) {
   const groups = new Map();
   fields.forEach((field) => { const key = field.section || '/'; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(field); });
-  $('#home-field-list').innerHTML = [...groups.entries()].map(([section, items]) => `<section class="home-section" data-home-section="${escapeHtml(section)}"><div class="home-section-head"><div><p class="eyebrow">Portada</p><h2>${escapeHtml(homeSectionLabel(section))}</h2></div><span>${items.length} campos</span></div><div class="home-section-grid">${items.map(homeFieldCard).join('')}</div></section>`).join('') || '<div class="empty-state"><strong>La portada no tiene campos</strong><span>Actualiza el inventario para volver a escanearla.</span></div>';
+  $('#home-field-list').innerHTML = [...groups.entries()].map(([section, items]) => `<section class="home-section" data-home-section="${escapeHtml(section)}"><div class="home-section-head"><div><p class="eyebrow">Portada</p><h2>${escapeHtml(homeSectionLabel(section))}</h2><small>${escapeHtml(homeSectionHelp(section))}</small></div><span>${items.length} campos</span></div><div class="home-section-grid">${items.map(homeFieldCard).join('')}</div></section>`).join('') || '<div class="empty-state"><strong>La portada no tiene campos</strong><span>Actualiza el inventario para volver a escanearla.</span></div>';
   $$('.home-save-field').forEach((button) => button.addEventListener('click', () => saveField(button.dataset.fieldId)));
   $$('.home-reset-field').forEach((button) => button.addEventListener('click', () => resetField(button.dataset.fieldId)));
   $$('.home-field-card', $('#home-field-list')).forEach((card) => {
@@ -376,7 +403,7 @@ function renderFieldList(fields) {
   list.innerHTML = fields.map((field) => {
     const hasDraft = field.draftValue != null;
     const current = field.draftValue ?? field.publishedValue ?? field.original;
-    return `<article class="field-card" data-field-card="${field.id}" data-field-search="${escapeHtml(`${humanFieldLabel(field)} ${field.section} ${field.original}`.toLowerCase())}" data-field-kind="${escapeHtml(field.kind)}"><div class="field-meta"><div class="field-label">${escapeHtml(humanFieldLabel(field))}</div><span class="field-kind">${escapeHtml(kindLabel(field))}</span></div>${field.kind === 'image' || field.kind === 'video' || field.kind === 'audio' ? `<div class="field-preview-note">Puedes pegar una ruta existente o usar la biblioteca multimedia.</div>` : ''}${fieldInput({ ...field, draftValue: current, publishedValue: null })}<div class="field-foot"><span class="field-source">Original: ${escapeHtml(field.original).slice(0, 120)}</span><span class="field-status ${hasDraft ? 'is-draft' : ''}">${hasDraft ? 'Borrador pendiente' : field.publishedValue != null ? 'Publicado desde CMS' : 'Valor original'}</span><div class="field-actions">${canEdit ? `<button class="mini-button reset-field" data-field-id="${field.id}" type="button">Restaurar original</button><button class="mini-button save-field" data-field-id="${field.id}" type="button">Guardar borrador</button>` : '<span class="field-status">Sólo lectura</span>'}</div></div></article>`;
+    return `<article class="field-card" data-field-card="${field.id}" data-field-search="${escapeHtml(`${humanFieldLabel(field)} ${field.section} ${field.original}`.toLowerCase())}" data-field-kind="${escapeHtml(field.kind)}"><div class="field-meta"><div><div class="field-label">${escapeHtml(humanFieldLabel(field))}</div><small class="field-help">${escapeHtml(fieldHelp(field))}</small></div><span class="field-kind">${escapeHtml(kindLabel(field))}</span></div>${field.kind === 'image' || field.kind === 'video' || field.kind === 'audio' ? `<div class="field-preview-note">Puedes pegar una ruta existente o usar la biblioteca multimedia.</div>` : ''}${fieldInput({ ...field, draftValue: current, publishedValue: null })}<div class="field-foot"><span class="field-source">Original: ${escapeHtml(field.original).slice(0, 120)}</span><span class="field-status ${hasDraft ? 'is-draft' : ''}">${hasDraft ? 'Borrador pendiente' : field.publishedValue != null ? 'Publicado desde CMS' : 'Valor original'}</span><div class="field-actions">${canEdit ? `<button class="mini-button reset-field" data-field-id="${field.id}" type="button">Restaurar original</button><button class="mini-button save-field" data-field-id="${field.id}" type="button">Guardar borrador</button>` : '<span class="field-status">Sólo lectura</span>'}</div></div></article>`;
   }).join('');
   $$('.save-field', list).forEach((button) => button.addEventListener('click', () => saveField(button.dataset.fieldId)));
   $$('.reset-field', list).forEach((button) => button.addEventListener('click', () => resetField(button.dataset.fieldId)));
@@ -1253,10 +1280,37 @@ function authErrorMessage(error) {
   return 'No se pudo completar el acceso: ' + (error?.message || 'inténtalo de nuevo.');
 }
 
+function setupPasswordVisibility() {
+  $$('input[type="password"]').forEach((input) => {
+    if (input.dataset.passwordToggle === 'ready') return;
+    const wrapper = document.createElement('span');
+    wrapper.className = 'password-field';
+    input.parentNode.insertBefore(wrapper, input);
+    wrapper.appendChild(input);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'password-toggle';
+    button.setAttribute('aria-label', 'Mostrar contraseña');
+    button.setAttribute('aria-pressed', 'false');
+    button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.5 12s3.3-5 9.5-5 9.5 5 9.5 5-3.3 5-9.5 5-9.5-5-9.5-5Z"></path><circle cx="12" cy="12" r="2.5"></circle></svg>';
+    button.addEventListener('click', () => {
+      const visible = input.type === 'text';
+      input.type = visible ? 'password' : 'text';
+      button.setAttribute('aria-label', visible ? 'Mostrar contraseña' : 'Ocultar contraseña');
+      button.setAttribute('aria-pressed', String(!visible));
+      button.classList.toggle('is-visible', !visible);
+      input.focus();
+    });
+    wrapper.appendChild(button);
+    input.dataset.passwordToggle = 'ready';
+  });
+}
+
 const socialStudio = createSocialStudio({ api, state, notify, escapeHtml, formatDate });
 const documentStudio = createDocumentStudio({ api, state, notify, escapeHtml, formatDate });
 
 async function boot() {
+  setupPasswordVisibility();
   $('#auth-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     $('#auth-error').hidden = true;

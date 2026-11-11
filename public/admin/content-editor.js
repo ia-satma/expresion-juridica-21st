@@ -1,6 +1,34 @@
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 export const pageTitle = page => page.page === '/' ? 'Inicio' : String(page.editorTitle || page.title || page.page).split('|')[0].trim().replace(/\s*[—–]\s*Expresión Jurídica.*$/i,'');
 
+const sectionHelp = {
+  'Buscadores y redes sociales': 'Define cómo se presenta esta página en Google, redes sociales y asistentes de IA.',
+  'Presentación principal': 'Edita el mensaje principal que recibe una persona al abrir esta página.',
+  'Contenido principal': 'Actualiza el contenido que explica el servicio, la firma o la información de esta página.',
+  'Áreas de práctica': 'Describe las áreas jurídicas que la firma ofrece y cómo se presentan al visitante.',
+  'Contacto': 'Controla los datos y llamadas a la acción que permiten solicitar una consulta.',
+  'Pie de página': 'Actualiza la información institucional y los enlaces que aparecen al final del sitio.',
+  'Cabecera y navegación': 'Edita la navegación y los accesos que se muestran en la parte superior.',
+  'Privacidad y legal': 'Mantén los avisos legales, políticas y textos de cumplimiento del sitio.'
+};
+
+function descriptionForSection(section, category = 'text') {
+  if (!section) return category === 'search' ? 'Ajusta los datos que ayudan a los buscadores a entender y mostrar esta página.' : 'Edita el contenido de esta sección y revisa el resultado antes de guardarlo.';
+  return sectionHelp[section.title] || (section.shared ? 'Este bloque se comparte en varias páginas y un cambio puede actualizarlo en todo el sitio.' : 'Edita el contenido de esta sección y revisa el resultado antes de guardarlo.');
+}
+
+function descriptionForField(field, section) {
+  if (field.category === 'search') return 'Este valor influye en el título, la descripción y la vista previa de la página en buscadores.';
+  if (field.category === 'media') return 'Cambia el recurso visual o audiovisual que aparece en esta sección; usa la biblioteca para elegir un archivo guardado.';
+  if (field.attribute === 'href' || field.kind === 'link') return 'Define a dónde lleva este enlace cuando una persona lo selecciona.';
+  if (field.attribute === 'alt') return 'Describe la imagen para personas que usan lectores de pantalla y para buscadores.';
+  if (field.attribute === 'placeholder') return 'Texto de ayuda que aparece dentro del campo antes de que la persona escriba.';
+  if (field.attribute === 'aria-label') return 'Nombre accesible que ayuda a las tecnologías de asistencia a identificar este control.';
+  if (field.label === 'Título principal' || field.label === 'Título del bloque') return 'Encabezado visible de esta sección. Mantén una idea clara y fácil de escanear.';
+  if (section?.shared) return 'Texto institucional compartido: el cambio puede reflejarse en varias páginas.';
+  return 'Texto visible de esta sección. Puedes editarlo, revisarlo en la vista previa y guardarlo como cambio del CMS.';
+}
+
 export function createContentEditor({ api, canEdit, onSaved, chooseMedia }) {
   const dirty = new Map(), catalogs = new Map(), selections = new Map(), pendingKnown=new Map();
   let active = null, request = 0, saving = false;
@@ -33,7 +61,7 @@ export function createContentEditor({ api, canEdit, onSaved, chooseMedia }) {
     const input = field.multiline ? `<textarea id="${id}" data-content-input="${field.id}" rows="${Math.min(9,Math.max(3,Math.ceil(value.length/95)))}" maxlength="100000"${readOnly}>${escapeHtml(value)}</textarea>` : `<input id="${id}" data-content-input="${field.id}" value="${escapeHtml(value)}" maxlength="100000"${readOnly}/>`;
     const section = active.catalog.sections.find(item => item.id === field.section);
     const preview = field.category === 'media' ? field.kind === 'image' ? `<img src="${escapeHtml(value)}" alt="Vista de la imagen actual" loading="lazy"/>` : `<span>${field.kind === 'video' ? 'Video de esta sección' : 'Audio de esta sección'}</span>` : '';
-    return `<article class="content-copy-field ${dirty.has(field.id)?'is-edited':''}" data-content-card="${field.id}"><div class="content-copy-label"><label for="${id}">${field.context?`${escapeHtml(field.context)} · `:''}${escapeHtml(field.label)}</label><span data-field-state>${status(field)}</span></div>${active.search ? `<small class="content-result-section">${escapeHtml(section?.title || '')}</small>` : ''}${preview?`<div class="content-media-preview">${preview}</div>`:''}${input}<div class="content-copy-actions">${field.category==='media'&&editable()?`<button type="button" class="text-action" data-content-media="${field.id}">Elegir de la biblioteca</button>`:''}${editable()?`<button type="button" class="text-action" data-content-reset="${field.id}">${field.category==='media'?'Restaurar archivo inicial':'Restaurar texto inicial'}</button>`:''}</div></article>`;
+    return `<article class="content-copy-field ${dirty.has(field.id)?'is-edited':''}" data-content-card="${field.id}"><div class="content-copy-label"><label for="${id}">${field.context?`${escapeHtml(field.context)} · `:''}${escapeHtml(field.label)}</label><span data-field-state>${status(field)}</span></div>${active.search ? `<small class="content-result-section">${escapeHtml(section?.title || '')}</small>` : ''}<p class="content-field-help">${escapeHtml(descriptionForField(field, section))}</p>${preview?`<div class="content-media-preview">${preview}</div>`:''}${input}<div class="content-copy-actions">${field.category==='media'&&editable()?`<button type="button" class="text-action" data-content-media="${field.id}">Elegir de la biblioteca</button>`:''}${editable()?`<button type="button" class="text-action" data-content-reset="${field.id}">${field.category==='media'?'Restaurar archivo inicial':'Restaurar texto inicial'}</button>`:''}</div></article>`;
   }
 
   function renderFields() {
@@ -43,7 +71,7 @@ export function createContentEditor({ api, canEdit, onSaved, chooseMedia }) {
     const words = search.toLocaleLowerCase('es');
     const fields = catalog.fields.filter(field => field.category === category && (search ? `${field.label} ${valueFor(field)} ${catalog.sections.find(item=>item.id===field.section)?.title}`.toLocaleLowerCase('es').includes(words) : field.section === section));
     root.querySelector('[data-content-section-title]').textContent = search ? 'Resultados de búsqueda' : selected?.title || 'Contenido';
-    root.querySelector('[data-content-section-note]').textContent = search ? `${fields.length} resultados en esta página` : selected?.shared ? 'Este contenido se comparte en todas las páginas del sitio.' : 'Edita el contenido. Al guardar podrás revisar el antes y el después.';
+    root.querySelector('[data-content-section-note]').textContent = search ? `${fields.length} resultados en esta página. Selecciona un campo para saber qué controla.` : descriptionForSection(selected, category);
     const preview = root.querySelector('[data-content-preview]');
     preview.href = catalog.page.previewUrl + (selected?.anchor ? `#${selected.anchor}` : '');
     root.querySelector('[data-content-fields]').innerHTML = fields.map(fieldCard).join('') || '<div class="content-empty"><strong>No hay elementos aquí</strong><p>Prueba otra sección o cambia la búsqueda.</p></div>';
@@ -59,7 +87,7 @@ export function createContentEditor({ api, canEdit, onSaved, chooseMedia }) {
     active.category = category;
     const sections = active.catalog.sections.filter(section=>active.catalog.fields.some(field=>field.section===section.id&&field.category===category));
     if (!sections.some(section=>section.id===active.section)) active.section = sections[0]?.id;
-    active.root.querySelector('[data-content-sections]').innerHTML = `<label class="content-mobile-section">Sección<select data-content-section-select>${sections.map(section=>`<option value="${escapeHtml(section.id)}"${section.id===active.section?' selected':''}>${escapeHtml(section.title)}</option>`).join('')}</select></label>`+sections.map((section,index)=>`<button type="button" data-content-section="${escapeHtml(section.id)}" aria-current="${section.id===active.section}"><small>${String(index+1).padStart(2,'0')}</small><span>${escapeHtml(section.title)}</span>${section.shared?'<em>Común</em>':''}</button>`).join('');
+    active.root.querySelector('[data-content-sections]').innerHTML = `<label class="content-mobile-section">Sección<select data-content-section-select>${sections.map(section=>`<option value="${escapeHtml(section.id)}"${section.id===active.section?' selected':''}>${escapeHtml(section.title)}</option>`).join('')}</select><small>${escapeHtml(descriptionForSection(sections.find(item=>item.id===active.section), category))}</small></label>`+sections.map((section,index)=>`<button type="button" data-content-section="${escapeHtml(section.id)}" aria-current="${section.id===active.section}"><small class="content-section-index">${String(index+1).padStart(2,'0')}</small><span class="content-section-copy"><strong>${escapeHtml(section.title)}</strong><small>${escapeHtml(descriptionForSection(section, category))}</small></span>${section.shared?'<em>Común</em>':''}</button>`).join('');
     active.root.querySelector('[data-content-section-select]').addEventListener('change',event=>{active.section=event.target.value;active.search='';active.root.querySelector('[data-content-search]').value='';selections.set(active.catalog.page.route,active.section);renderFields();});
     active.root.querySelectorAll('[data-content-section]').forEach(button=>button.addEventListener('click',()=>{active.section=button.dataset.contentSection;active.search='';active.root.querySelector('[data-content-search]').value='';selections.set(active.catalog.page.route,active.section);renderFields();}));
     active.root.querySelectorAll('[data-content-category]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.contentCategory===category)));

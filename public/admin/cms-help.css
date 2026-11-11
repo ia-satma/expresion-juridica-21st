@@ -75,6 +75,93 @@
   margin-top: 0;
 }
 
+.home-section-head small,
+.home-field-description,
+.field-help {
+  display: block;
+  color: #7b7f8b;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.home-section-head small {
+  max-width: 56ch;
+  margin-top: 5px;
+}
+
+.home-tools-help {
+  flex: 0 1 250px;
+  min-width: 180px;
+}
+
+.home-tools-help strong,
+.storage-toolbar-title {
+  display: block;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.home-tools-help small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.storage-toolbar-title {
+  margin: 0 0 5px;
+}
+
+.home-field-description,
+.field-help {
+  margin-top: 4px;
+}
+
+.password-field {
+  position: relative;
+  display: block;
+}
+
+.auth-form .password-field input,
+.settings-fields .password-field input {
+  padding-right: 43px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #858996;
+  transform: translateY(-50%);
+}
+
+.password-toggle:hover,
+.password-toggle.is-visible {
+  background: #ececf1;
+  color: var(--navy);
+}
+
+.password-toggle svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
 @media (max-width: 760px) {
   .nav-stack {
     flex: 0 0 auto;
@@ -126,6 +213,16 @@
   }
 
   .panel-description {
+    font-size: 10px;
+  }
+
+  .home-tools-help {
+    flex-basis: 100%;
+  }
+
+  .home-section-head small,
+  .home-field-description,
+  .field-help {
     font-size: 10px;
   }
 }
