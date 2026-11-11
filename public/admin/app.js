@@ -1,7 +1,7 @@
 import { createContentEditor, pageTitle } from "./content-editor.js?v=20261103-editable3";
 import { currentCmsCsrf } from "./csrf.js?v=20261102-studio2";
 import { createSocialStudio } from "./social.js?v=20261110-studio-errors";
-import { createDocumentStudio } from "./documents.js?v=20261103-layout7";
+import { createDocumentStudio } from "./documents.js?v=20261111-cms-fixes";
 import { createGenerationProgress } from './generation-progress.js?v=20261103-layout7';
 import { confirmLibraryRemoval } from './library-actions.js?v=20261103-layout7';
 import { createSessionActivity } from './session-activity.js?v=20261103-layout7';
@@ -828,39 +828,95 @@ function signatureAssetBase(value) {
   return base.endsWith('/') ? base : `${base}/`;
 }
 
+let signatureNameMeasureContext;
+function signatureMeasure(text, fontSize) {
+  signatureNameMeasureContext ??= document.createElement('canvas').getContext('2d');
+  signatureNameMeasureContext.font = `italic 400 ${fontSize}px Georgia, 'Times New Roman', serif`;
+  return signatureNameMeasureContext.measureText(text).width;
+}
+function signatureWrapName(text, fontSize, maxWidth) {
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return [''];
+  const lines = [];
+  let line = '';
+  const push = () => { if (line) lines.push(line); line = ''; };
+  for (const word of words) {
+    if (signatureMeasure(word, fontSize) > maxWidth) {
+      push();
+      let chunk = '';
+      for (const character of word) {
+        const candidate = chunk + character;
+        if (chunk && signatureMeasure(candidate, fontSize) > maxWidth) { lines.push(chunk); chunk = character; } else chunk = candidate;
+      }
+      line = chunk;
+      continue;
+    }
+    const candidate = line ? `${line} ${word}` : word;
+    if (line && signatureMeasure(candidate, fontSize) > maxWidth) push();
+    line = line ? `${line} ${word}` : word;
+  }
+  push();
+  return lines;
+}
+function signatureNameLayout(value) {
+  const maxWidth = 326;
+  for (let fontSize = 23; fontSize >= 13; fontSize -= .5) {
+    const lines = signatureWrapName(value.name, fontSize, maxWidth);
+    if (lines.length <= 2) {
+      const lineHeight = lines.length > 1 ? Math.round(fontSize * 1.18) : 29;
+      return { lines, fontSize, lineHeight, top: 28, roleTop: lines.length > 1 ? Math.min(92, 28 + lineHeight * lines.length + 5) : 62 };
+    }
+  }
+  const words = String(value.name || '').trim().split(/\s+/).filter(Boolean);
+  let lines = [''];
+  if (words.length > 1) {
+    let best = null;
+    for (let index = 1; index < words.length; index += 1) {
+      const candidate = [words.slice(0, index).join(' '), words.slice(index).join(' ')];
+      const score = Math.max(signatureMeasure(candidate[0], 13), signatureMeasure(candidate[1], 13));
+      if (!best || score < best.score) best = { lines: candidate, score };
+    }
+    lines = best.lines;
+  } else if (words[0]) {
+    const midpoint = Math.max(1, Math.ceil(words[0].length / 2));
+    lines = [words[0].slice(0, midpoint), words[0].slice(midpoint)];
+  }
+  let fontSize = 13;
+  while (fontSize > 6 && Math.max(...lines.map(line => signatureMeasure(line, fontSize))) > maxWidth) fontSize -= .5;
+  const lineHeight = Math.round(fontSize * 1.18);
+  return { lines, fontSize, lineHeight, top: 28, roleTop: Math.min(92, 28 + lineHeight * lines.length + 5) };
+}
+
 function buildSignatureHtml(value, artwork) {
   const base = signatureAssetBase(value);
   const bg = artwork?.background ?? base + 'fondo-derecha.png';
   const logo = artwork?.logo ?? base + 'logo.png';
-  const PW = 2087.971, PH = 767.057, LEFT = 240, H = 220, k = 600 / PW;
+  const LEFT = 240, RIGHT = 360, H = 220;
   const SERIF = "Georgia,'Times New Roman',serif";
   const SANS = "Arial,sans-serif";
+  const name = signatureNameLayout(value);
   const lines = [
-    { key: 'name', serif: true, size: 80, x: 891.016, base: PH - 592.309, color: '#B08D57', ls: 0, ws: -0.041 },
-    { key: 'role', size: 47.0786, x: 885.185, base: PH - 514.104, color: '#0C112B', ls: 0, ws: 0 },
-    { key: 'phone', size: 43, x: 992.543, base: PH - 343.561, color: '#141A3A', ls: -0.019, ws: 0.019, href: (item) => 'tel:' + item.replace(/[^\d+]/g, '') },
-    { key: 'email', size: 43, x: 992.543, base: PH - 238.6, color: '#141A3A', ls: -0.019, ws: 0.019, href: (item) => 'mailto:' + item.trim() },
-    { key: 'address1', size: 43, x: 992.543, base: PH - 143.4, color: '#141A3A', ls: -0.019, ws: 0.019 },
-    { key: 'address2', size: 43, x: 992.543, base: PH - 97.3, color: '#141A3A', ls: -0.019, ws: 0.019 }
+    { key: 'name', serif: true, size: name.fontSize, x: 16, top: name.top, height: name.lineHeight * name.lines.length, color: '#B08D57', multi: name.lines },
+    { key: 'role', size: 13.53, x: 15, top: name.roleTop, height: 14, color: '#0C112B' },
+    { key: 'phone', size: 12.36, x: 45, top: 112, height: 13, color: '#141A3A', href: (item) => 'tel:' + item.replace(/[^\d+]/g, '') },
+    { key: 'email', size: 12.36, x: 45, top: 142, height: 13, color: '#141A3A', href: (item) => 'mailto:' + item.trim() },
+    { key: 'address1', size: 12.36, x: 45, top: 169, height: 13, color: '#141A3A' },
+    { key: 'address2', size: 12.36, x: 45, top: 182, height: 13, color: '#141A3A' }
   ];
-  const round = (number) => Math.round(number * 100) / 100;
+  const round = number => Math.round(number * 100) / 100;
   let y = 0;
   let rows = '';
   for (const line of lines) {
-    const size = line.size * k;
-    const lineHeight = line.serif ? Math.round(size * 1.25) : Math.round(size * 1.05);
-    const ascender = line.serif ? (lineHeight - 1.23 * size) / 2 + 0.97 * size : (lineHeight - size) / 2 + 0.794 * size;
-    const top = Math.round(line.base * k - ascender);
-    if (top > y) rows += '<tr><td height="' + (top - y) + '" style="height:' + (top - y) + 'px;line-height:' + (top - y) + 'px;font-size:1px;mso-line-height-rule:exactly;">&nbsp;</td></tr>';
-    const style = 'padding:0 0 0 ' + round(line.x * k - LEFT) + 'px;height:' + lineHeight + 'px;line-height:' + lineHeight + 'px;mso-line-height-rule:exactly;font-family:' + (line.serif ? SERIF : SANS) + ';font-size:' + round(size) + 'px;' + (line.serif ? 'font-style:italic;' : '') + 'font-weight:400;color:' + line.color + ';white-space:nowrap;' + (line.ls ? 'letter-spacing:' + line.ls + 'em;' : '') + (line.ws ? 'word-spacing:' + line.ws + 'em;' : '');
+    if (line.top > y) rows += `<tr><td height="${line.top - y}" style="height:${line.top - y}px;line-height:${line.top - y}px;font-size:1px;mso-line-height-rule:exactly;">&nbsp;</td></tr>`;
+    const style = `padding:0 0 0 ${round(line.x)}px;height:${line.height}px;line-height:${line.height}px;mso-line-height-rule:exactly;font-family:${line.serif ? SERIF : SANS};font-size:${round(line.size)}px;${line.serif ? 'font-style:italic;' : ''}font-weight:400;color:${line.color};${line.multi ? 'white-space:normal;max-width:326px;overflow-wrap:anywhere;' : 'white-space:nowrap;'}${line.key === 'name' ? 'word-break:normal;' : ''}`;
     const raw = String(value[line.key] || '');
-    const text = signatureEsc(raw);
-    const inner = line.href && raw ? '<a href="' + signatureEsc(line.href(raw)) + '" style="color:' + line.color + ';text-decoration:none;">' + text + '</a>' : text;
-    rows += '<tr><td style="' + style + '">' + inner + '</td></tr>';
-    y = top + lineHeight;
+    const text = line.multi ? line.multi.map(signatureEsc).join('<br>') : signatureEsc(raw);
+    const inner = line.href && raw ? `<a href="${signatureEsc(line.href(raw))}" style="color:${line.color};text-decoration:none;">${text}</a>` : text;
+    rows += `<tr><td style="${style}">${inner}</td></tr>`;
+    y = line.top + line.height;
   }
-  if (y < H) rows += '<tr><td height="' + (H - y) + '" style="height:' + (H - y) + 'px;line-height:' + (H - y) + 'px;font-size:1px;mso-line-height-rule:exactly;">&nbsp;</td></tr>';
-  return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;border-collapse:collapse;mso-table-lspace:0;mso-table-rspace:0;"><tr><td width="' + LEFT + '" valign="top" style="width:' + LEFT + 'px;padding:0;vertical-align:top;font-size:0;line-height:0;"><img src="' + signatureEsc(logo) + '" width="' + LEFT + '" height="' + H + '" alt="Expresión Jurídica Consultores" style="display:block;width:' + LEFT + 'px;height:' + H + 'px;border:0;outline:none;"></td><td width="' + (600 - LEFT) + '" height="' + H + '" valign="top" background="' + signatureEsc(bg) + '" bgcolor="#ffffff" style="width:' + (600 - LEFT) + 'px;height:' + H + 'px;padding:0;vertical-align:top;background-color:#ffffff;background-image:url(\'' + signatureEsc(bg) + '\');background-repeat:no-repeat;background-position:0 0;background-size:' + (600 - LEFT) + 'px ' + H + 'px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="' + (600 - LEFT) + '" style="width:' + (600 - LEFT) + 'px;border-collapse:collapse;">' + rows + '</table></td></tr></table>';
+  if (y < H) rows += `<tr><td height="${H - y}" style="height:${H - y}px;line-height:${H - y}px;font-size:1px;mso-line-height-rule:exactly;">&nbsp;</td></tr>`;
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;border-collapse:collapse;mso-table-lspace:0;mso-table-rspace:0;"><tr><td width="${LEFT}" valign="top" style="width:${LEFT}px;padding:0;vertical-align:top;font-size:0;line-height:0;"><img src="${signatureEsc(logo)}" width="${LEFT}" height="${H}" alt="Expresión Jurídica Consultores" style="display:block;width:${LEFT}px;height:${H}px;border:0;outline:none;"></td><td width="${RIGHT}" height="${H}" valign="top" background="${signatureEsc(bg)}" bgcolor="#ffffff" style="width:${RIGHT}px;height:${H}px;padding:0;vertical-align:top;background-color:#ffffff;background-image:url('${signatureEsc(bg)}');background-repeat:no-repeat;background-position:0 0;background-size:${RIGHT}px ${H}px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="${RIGHT}" style="width:${RIGHT}px;border-collapse:collapse;">${rows}</table></td></tr></table>`;
 }
 let signaturePreviewArtwork;
 async function loadSignaturePreviewImage(filename) {
@@ -933,14 +989,20 @@ async function downloadSignaturePng(value = signatureValues()) {
     image.src = '/firma-assets/firma-fondo.png';
     await image.decode();
     const scale = image.naturalWidth / 2087.971;
+    const renderScale = image.naturalWidth / 600;
     const canvas = document.createElement('canvas');
     canvas.width = image.naturalWidth;
     canvas.height = image.naturalHeight;
     const context = canvas.getContext('2d');
     context.drawImage(image, 0, 0);
+    const name = signatureNameLayout(value);
+    const drawText = (text, x, baseline, fontSize, color, serif = false) => { context.fillStyle = color; context.font = `${serif ? 'italic ' : ''}400 ${fontSize * renderScale}px ${serif ? 'Georgia,Times New Roman,serif' : 'Arial,sans-serif'}`; context.fillText(text, x * renderScale, baseline * renderScale); };
+    const nameBaselineOffset = name.fontSize * .97;
+    name.lines.forEach((line, index) => drawText(line, 256, name.top + nameBaselineOffset + index * name.lineHeight, name.fontSize, '#B08D57', true));
+    drawText(String(value.role || ''), 255, name.roleTop + 10.7, 13.53, '#0C112B');
     context.textBaseline = 'alphabetic';
-    const lines = [{ key: 'name', size: 80, x: 891.016, base: 174.748, color: '#B08D57', serif: true }, { key: 'role', size: 47.0786, x: 885.185, base: 252.953, color: '#0C112B' }, { key: 'phone', size: 43, x: 992.543, base: 423.496, color: '#141A3A' }, { key: 'email', size: 43, x: 992.543, base: 528.457, color: '#141A3A' }, { key: 'address1', size: 43, x: 992.543, base: 623.657, color: '#141A3A' }, { key: 'address2', size: 43, x: 992.543, base: 669.757, color: '#141A3A' }];
-    for (const line of lines) { context.fillStyle = line.color; context.font = (line.serif ? 'italic ' : '') + '400 ' + (line.size * scale) + 'px ' + (line.serif ? 'Georgia,Times New Roman,serif' : 'Arial,sans-serif'); context.fillText(String(value[line.key] || ''), line.x * scale, line.base * scale); }
+    const lines = [{ key: 'phone', size: 43, x: 992.543, base: 423.496, color: '#141A3A' }, { key: 'email', size: 43, x: 992.543, base: 528.457, color: '#141A3A' }, { key: 'address1', size: 43, x: 992.543, base: 623.657, color: '#141A3A' }, { key: 'address2', size: 43, x: 992.543, base: 669.757, color: '#141A3A' }];
+    for (const line of lines) { context.fillStyle = line.color; context.font = '400 ' + (line.size * scale) + 'px Arial,sans-serif'; context.fillText(String(value[line.key] || ''), line.x * scale, line.base * scale); }
     canvas.toBlob((blob) => { if (blob) downloadBlob(signatureFileStem(value) + '.png', blob); });
     notify('PNG descargado.');
   } catch { notify('No se pudo generar el PNG.', 'error'); }

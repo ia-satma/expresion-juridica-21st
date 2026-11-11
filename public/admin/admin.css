@@ -423,3 +423,16 @@ body:has(#presentations-view:not([hidden])) .topbar-actions .button{font-size:10
 #presentations-view .view-heading h1{font-size:36px;line-height:1.1}
 }
 @media(prefers-reduced-motion:reduce){.presentation-switch,.presentation-switch:after,.presentation-form-actions .button-primary{transition:none;transform:none!important}}
+
+/* Keep the session controls in a dedicated footer while the navigation scrolls. */
+.sidebar{height:100vh;height:100dvh;overflow:hidden}
+.nav-stack{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;padding-right:2px}
+.sidebar-footer{flex:0 0 auto;margin-top:auto}
+.sidebar-footer .nav-logout{margin-top:0}
+@media(max-width:760px){
+  .sidebar{height:auto;max-height:none;overflow:visible}
+  .nav-stack{flex:0 0 auto;min-height:0;overflow-x:auto;overflow-y:hidden;padding-right:0}
+  .sidebar-footer{display:block;margin-top:10px}
+  .sidebar-footer .sidebar-note{display:flex}
+  .sidebar-footer .nav-logout{display:flex;position:static;width:100%;margin:8px 0 0;min-height:42px}
+}

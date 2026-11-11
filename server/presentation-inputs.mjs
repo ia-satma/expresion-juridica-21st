@@ -8,6 +8,9 @@ import sharp from 'sharp';
 export const MAX_PRESENTATION_FILE_BYTES = 100 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 200 * 1024 * 1024;
 const MAX_SOURCE_CHARS = 120000;
+export const MAX_DOCUMENT_FILE_BYTES = MAX_PRESENTATION_FILE_BYTES;
+export const MAX_DOCUMENT_TOTAL_BYTES = MAX_TOTAL_BYTES;
+export const MAX_DOCUMENT_SOURCE_CHARS = 200000;
 export function presentationInputError(message, code = 'PRESENTATION_INPUT_INVALID', status = 422) {
   return Object.assign(new Error(message), { code, status });
 }
@@ -30,6 +33,30 @@ async function readDocument(file) {
     } finally { await parser.destroy(); }
   }
   throw presentationInputError('Sube documentos PDF, DOCX, TXT o Markdown.');
+}
+
+export async function prepareDocumentInputs(files = {}) {
+  const documents = files.documents || [];
+  if (documents.reduce((total, file) => total + file.size, 0) > MAX_DOCUMENT_TOTAL_BYTES) {
+    throw presentationInputError('Los archivos superan 200 MB en total. Reduce la selección.', 'DOCUMENT_FILES_TOO_LARGE', 413);
+  }
+  const parts = [];
+  const documentNames = [];
+  for (const file of documents) {
+    let extracted;
+    try { extracted = await readDocument(file); } catch (error) {
+      if (error?.code) throw error;
+      throw presentationInputError(`No se pudo leer ${file.originalname}. Usa un DOCX o PDF con texto seleccionable.`, 'DOCUMENT_FILE_EMPTY');
+    }
+    const text = String(extracted || '').replace(/\u0000/g, '').trim();
+    if (!text) throw presentationInputError(`No se pudo extraer texto de ${file.originalname}. Usa un DOCX o PDF con texto seleccionable.`, 'DOCUMENT_FILE_EMPTY');
+    parts.push(`DOCUMENTO: ${file.originalname}\n${text}`);
+    documentNames.push(file.originalname);
+    if (parts.join('\n\n').length > MAX_DOCUMENT_SOURCE_CHARS) {
+      throw presentationInputError('El texto de los documentos supera 200 000 caracteres. Reduce la selección.', 'DOCUMENT_INPUT_INVALID', 400);
+    }
+  }
+  return { sourceText: parts.join('\n\n'), documentNames };
 }
 
 export async function preparePresentationInputs(files = {}) {

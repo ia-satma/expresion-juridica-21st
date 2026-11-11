@@ -4,12 +4,13 @@ import { createStudioJobs } from './studio-jobs.mjs';
 import { listStudioRecords, readStudioState, writeStudioState } from './studio-state.mjs';
 import { generateDocument, renderDocument, currentDocumentExport, normalizeDocument, LETTERHEAD_DIR } from './document-generator.mjs';
 import { presentationModels } from './presentation-generator.mjs';
+import { cleanupPresentationInputs, prepareDocumentInputs, presentationInputError } from './presentation-inputs.mjs';
 import { publicFailure, safeLog } from './security-logging.mjs';
 import { registerStudioTrashRoutes } from './studio-trash.mjs';
 
-export function registerDocumentRoutes(app, { store, writeStore, requireAuth, requireEditor, requireCsrf, audit }) {
+export function registerDocumentRoutes(app, { store, writeStore, requireAuth, requireEditor, requireCsrf, receiveDocumentInputs = (_req, _res, next) => next(), audit }) {
   store.documents = Array.isArray(store.documents) ? store.documents : [];
-  const publicRecord = item => ({ id: item.id, title: item.title, document: item.document, pageCount: item.pageCount, aiUsed: item.aiUsed, model: item.model, brandProfile: item.brandProfile, createdAt: item.createdAt, updatedAt: item.updatedAt, deletedAt:item.deletedAt||null, files: { docx: `/api/cms/documents/${item.id}/file/docx`, pdf: `/api/cms/documents/${item.id}/file/pdf` } });
+  const publicRecord = item => ({ id: item.id, title: item.title, document: item.document, pageCount: item.pageCount, aiUsed: item.aiUsed, model: item.model, paperSize: item.paperSize || 'carta', brandProfile: item.brandProfile, createdAt: item.createdAt, updatedAt: item.updatedAt, deletedAt:item.deletedAt||null, files: { docx: `/api/cms/documents/${item.id}/file/docx`, pdf: `/api/cms/documents/${item.id}/file/pdf` } });
   const jobs = createStudioJobs('documents', publicRecord);
   const get = async id => await readStudioState('documents', id) || store.documents.find(item => item.id === id);
   async function save(item) { await writeStudioState('documents', item.id, item); store.documents = [item, ...store.documents.filter(record => record.id !== item.id)]; }
@@ -26,16 +27,21 @@ export function registerDocumentRoutes(app, { store, writeStore, requireAuth, re
   app.get('/api/cms/documents/jobs/:id', requireAuth, async (req, res) => {
     try { const job = await jobs.read(req, req.params.id); if (!job) return res.status(404).json({ error: 'DOCUMENT_JOB_NOT_FOUND' }); res.set('Cache-Control', 'private, no-store').json({ job }); } catch (error) { fail(res, error); }
   });
-  app.post('/api/cms/documents/generate', requireAuth, requireEditor, requireCsrf, async (req, res) => {
+  app.post('/api/cms/documents/generate', requireAuth, requireEditor, requireCsrf, receiveDocumentInputs, async (req, res) => {
+    const uploadedFiles = req.files;
     try {
-      const { text, title = '', instructions = '', mode = 'preserve' } = req.body || {};
-      if (typeof text !== 'string' || !text.trim() || text.length > 200000) return res.status(400).json({ error: 'DOCUMENT_INPUT_INVALID', detail: 'Pega el texto del documento. Se admiten hasta 200 000 caracteres.' });
+      const { title = '', text = '', instructions = '', mode = 'preserve', paperSize = 'carta' } = req.body || {};
+      const uploaded = await prepareDocumentInputs(uploadedFiles);
+      const pastedText = typeof text === 'string' ? text.trim() : '';
+      const sourceText = [pastedText, uploaded.sourceText].filter(Boolean).join('\n\n');
+      if (!sourceText || sourceText.length > 200000) throw presentationInputError('Pega texto o sube un DOCX/PDF. Se admiten hasta 200 000 caracteres.', 'DOCUMENT_INPUT_INVALID', 400);
       const job = await jobs.enqueue(req, async progress => {
-        const result = await generateDocument({ text, title: String(title).slice(0, 180), instructions: String(instructions).slice(0, 5000), mode: mode === 'organize' ? 'organize' : 'preserve' }, progress);
+        const result = await generateDocument({ text: sourceText, title: String(title).slice(0, 180), instructions: String(instructions).slice(0, 5000), mode: mode === 'organize' ? 'organize' : 'preserve', paperSize }, progress);
         const record = { ...result, createdBy: req.cmsUser.email };progress('Guardando el documento y sus archivos',0,1,'save'); await save(record); audit('document.create', req.cmsUser, { documentId: record.id, aiUsed: record.aiUsed, model: record.model });await writeStore(); return record;
       });
       res.status(202).json({ job });
     } catch (error) { fail(res, error); }
+    finally { await cleanupPresentationInputs(uploadedFiles); }
   });
   app.patch('/api/cms/documents/:id', requireAuth, requireEditor, requireCsrf, async (req, res) => {
     try {

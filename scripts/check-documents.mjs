@@ -2,14 +2,17 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import http from 'node:http';
+import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import express from 'express';
+import multer from 'multer';
 import JSZip from 'jszip';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import mammoth from 'mammoth';
 
 const root = process.cwd(), outputRoot = path.join(root, 'data/local-build-work'); await fs.mkdir(outputRoot, { recursive: true });
 const output = await fs.mkdtemp(path.join(outputRoot, 'document-check-')), calls = [];
+const inputOutput = path.join(output, 'document-inputs'); await fs.mkdir(inputOutput, { recursive: true });
 const mock = http.createServer(async (req, res) => {
   let raw = ''; for await (const chunk of req) raw += chunk; const body = JSON.parse(raw); calls.push(body);
   const input = JSON.parse(body.input);
@@ -25,10 +28,12 @@ const { registerDocumentRoutes } = await import('../server/document-routes.mjs')
 const { readStudioState, writeStudioState } = await import('../server/studio-state.mjs');
 const requireAuth = (req, res, next) => { if (!req.headers.cookie?.includes('qa_session=studio')) return res.status(401).json({ error: 'AUTH_REQUIRED' }); req.cmsUser = { id: req.headers['x-qa-user'] || 'owner-qa', email: 'preview@example.test', role: 'owner' }; next(); };
 const requireCsrf = (req, res, next) => req.headers['x-cms-csrf'] === 'qa-csrf' ? next() : res.status(403).json({ error: 'CSRF_INVALID' });
+const documentUpload = multer({ storage: multer.diskStorage({ destination: (_req, _file, callback) => callback(null, inputOutput), filename: (_req, _file, callback) => callback(null, crypto.randomUUID()) }), limits: { fileSize: 100 * 1024 * 1024, files: 20, fields: 8, fieldSize: 200000 } }).fields([{ name: 'documents', maxCount: 20 }]);
+const receiveDocumentInputs = (req, res, next) => req.is('multipart/form-data') ? documentUpload(req, res, error => error ? res.status(422).json({ error: error.code || 'DOCUMENT_INPUT_INVALID', detail: error.message }) : next()) : next();
 function application() {
   const app = express(), store = {};
   app.use(express.json({ limit: '5mb' }));
-  registerDocumentRoutes(app, { store, writeStore: () => {}, requireAuth, requireEditor: (_req, _res, next) => next(), requireCsrf, audit: () => {} });
+  registerDocumentRoutes(app, { store, writeStore: () => {}, requireAuth, requireEditor: (_req, _res, next) => next(), requireCsrf, receiveDocumentInputs, audit: () => {} });
   app.get('/api/cms/auth-state', (_req, res) => { res.setHeader('set-cookie', 'qa_session=studio; HttpOnly; SameSite=Lax; Path=/'); res.json({ authenticated: true, user: { role: 'owner', name: 'Prueba local', email: 'preview@example.test', mustChangePassword: false }, csrf: 'qa-csrf' }); });
   app.use('/admin', express.static(path.join(root, 'public/admin'))); app.use('/fonts', express.static(path.join(root, 'sitio/fonts')));
   return app;
@@ -64,6 +69,19 @@ try {
   const pdfText = execFileSync('pdftotext', ['-layout', path.join(output, 'letterhead.pdf'), '-'], { encoding: 'utf8' });
   assert.equal((pdfText.match(/consultoria@expresionjuridica\.com/gi) || []).length, result.pageCount, 'New footer contact should appear once per page');
   assert(!pdfText.includes('expresionjuridica@live.com'), 'Legacy contact must not appear in generated PDF');
+  // Multipart generation combines pasted text and multiple source documents,
+  // keeps the selected Oficio format, and removes temporary upload files.
+  const sourcePdf = await PDFDocument.create(); const sourcePage = sourcePdf.addPage([612, 792]); const sourceFont = await sourcePdf.embedFont(StandardFonts.Helvetica); sourcePage.drawText('Texto extraído del PDF de insumo.', { x: 72, y: 700, font: sourceFont, size: 14 }); const sourcePdfBytes = Buffer.from(await sourcePdf.save());
+  const multipart = new FormData(); multipart.append('title', 'Documento combinado'); multipart.append('text', 'Texto pegado de insumo.'); multipart.append('mode', 'preserve'); multipart.append('paperSize', 'oficio'); multipart.append('instructions', ''); multipart.append('documents', new Blob([docxBytes]), 'origen.docx'); multipart.append('documents', new Blob([sourcePdfBytes], { type: 'application/pdf' }), 'origen.pdf');
+  const multipartResponse = await fetch(base + '/api/cms/documents/generate', { method: 'POST', headers: { cookie: headers.cookie, 'x-cms-csrf': 'qa-csrf' }, body: multipart }); assert.equal(multipartResponse.status, 202); const multipartStarted = await multipartResponse.json(); const multipartResult = await finish(multipartStarted.job.id);
+  assert.equal(multipartResult.paperSize, 'oficio'); assert.equal(calls.length, 0);
+  const multipartDocxBytes = Buffer.from(await (await fetch(base + multipartResult.files.docx, { headers })).arrayBuffer()), multipartZip = await JSZip.loadAsync(multipartDocxBytes), multipartXml = await multipartZip.file('word/document.xml').async('string');
+  assert.match(multipartXml, /w:pgSz w:w="12240" w:h="19277"/); assert.match(await multipartZip.file('word/_rels/header1.xml.rels').async('string'), /letterhead-oficio\.png/); assert(Object.keys(multipartZip.files).includes('word/media/letterhead-oficio.png'));
+  const multipartText = (await mammoth.extractRawText({ buffer: multipartDocxBytes })).value; assert(multipartText.includes('Texto pegado de insumo.')); assert(multipartText.includes('Texto extraído del PDF de insumo.'));
+  const multipartPdfBytes = Buffer.from(await (await fetch(base + multipartResult.files.pdf, { headers })).arrayBuffer()), multipartPdf = await PDFDocument.load(multipartPdfBytes); assert(Math.abs(multipartPdf.getPage(0).getHeight() - 963.84) < .01);
+  assert.equal((await fs.readdir(inputOutput)).length, 0, 'Temporary document uploads must be removed');
+  const emptyMultipart = new FormData(); emptyMultipart.append('paperSize', 'carta'); const emptyResponse = await fetch(base + '/api/cms/documents/generate', { method: 'POST', headers: { cookie: headers.cookie, 'x-cms-csrf': 'qa-csrf' }, body: emptyMultipart }); assert.equal(emptyResponse.status, 400);
+  const legacyDoc = new FormData(); legacyDoc.append('documents', new Blob(['legacy']), 'archivo.doc'); const legacyResponse = await fetch(base + '/api/cms/documents/generate', { method: 'POST', headers: { cookie: headers.cookie, 'x-cms-csrf': 'qa-csrf' }, body: legacyDoc }); assert.equal(legacyResponse.status, 422);
   // Existing documents must also use the current format without modifying
   // their content or edit version, even when their saved exports are stale.
   const legacy = await readStudioState('documents', result.id), legacyVersion = legacy.updatedAt;
@@ -80,7 +98,7 @@ try {
   assert.equal(unchanged.updatedAt, legacyVersion); assert.deepEqual(unchanged.document, legacy.document); assert.equal(calls.length, 0);
   // A new route instance starts with an empty store and no in-memory job map.
   replica = application().listen(0, '127.0.0.1'); await new Promise(resolve => replica.once('listening', resolve)); const replicaBase = `http://127.0.0.1:${replica.address().port}`;
-  const recovered = await json('/api/cms/documents', {}, replicaBase); assert.equal(recovered.data.documents[0].id, result.id); assert.equal((await finish(started.data.job.id, replicaBase)).id, result.id);
+  const recovered = await json('/api/cms/documents', {}, replicaBase); assert(recovered.data.documents.some(item => item.id === result.id)); assert.equal((await finish(started.data.job.id, replicaBase)).id, result.id);
   assert.equal((await fetch(replicaBase + result.files.pdf, { headers })).status, 200);
   result.document.content.push({ type: 'paragraph', content: [{ type: 'text', text: 'Edición persistente sin consumo de IA.', marks: [{ type: 'bold' }] }] });
   const updated = await json(`/api/cms/documents/${result.id}`, { method: 'PATCH', body: JSON.stringify({ document: result.document, version: result.updatedAt }) }, replicaBase); assert.equal(updated.response.status, 202); const edited = await finish(updated.data.job.id, replicaBase); assert.equal(calls.length, 0); assert.equal(edited.document.content.at(-1).content[0].text, 'Edición persistente sin consumo de IA.');
@@ -93,6 +111,6 @@ try {
   assert(!(await json('/api/cms/documents')).data.documents.some(item=>item.id===organized.id));assert((await json('/api/cms/documents?includeDeleted=1',{},replicaBase)).data.documents.some(item=>item.id===organized.id&&item.deletedAt));
   assert.equal((await fetch(base+organized.files.pdf,{headers})).status,404);
   const restored=await json(`/api/cms/documents/${organized.id}/restore`,{method:'POST',body:JSON.stringify({version:removed.data.record.updatedAt})},replicaBase);assert.equal(restored.response.status,200);assert.equal((await fetch(base+organized.files.pdf,{headers})).status,200);
-  console.log(JSON.stringify({ passed: true, fullTextPreserved: true, editableDocx: true, embeddedFonts: 2, pdfPages: result.pageCount, brandOnEveryPage: true, durableHistoryAndJobs: true, recoverableDelete:true,editsWithoutAi: true, optionalSol: true, output }));
+  console.log(JSON.stringify({ passed: true, fullTextPreserved: true, editableDocx: true, embeddedFonts: 2, pdfPages: result.pageCount, oficio: true, multipartSources: true, brandOnEveryPage: true, durableHistoryAndJobs: true, recoverableDelete:true,editsWithoutAi: true, optionalSol: true, output }));
   if (process.env.EJ_DOCUMENT_PREVIEW === '1') console.log(`PREVIEW ${base}/admin/#documents`);
 } finally { replica?.close(); if (process.env.EJ_DOCUMENT_PREVIEW !== '1') { server.close(); mock.close(); } }

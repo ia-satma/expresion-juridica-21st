@@ -11,7 +11,7 @@ import { recoverExistingOwner } from './owner-recovery.mjs';
 import { DATA_DIR, DATA_SCOPE, MEDIA_DIR, STORE_FILE } from './data-paths.mjs';
 import { appStorageEnabled, appStorageScope, deleteFile as deleteStorageFile, downloadFile as downloadStorageFile, removeLocalFile, uploadFile as uploadStorageFile } from './app-storage.mjs';
 import { generatePresentation, filePathForPresentation, ensurePresentationDir, presentationModels } from './presentation-generator.mjs';
-import { preparePresentationInputs, cleanupPresentationInputs, MAX_PRESENTATION_FILE_BYTES, presentationInputError } from './presentation-inputs.mjs';
+import { preparePresentationInputs, cleanupPresentationInputs, MAX_PRESENTATION_FILE_BYTES, MAX_DOCUMENT_FILE_BYTES, presentationInputError } from './presentation-inputs.mjs';
 import { registerSocialRoutes } from './social-routes.mjs';
 import { registerDocumentRoutes } from './document-routes.mjs';
 import { repairPresentationImageSizing } from './presentation-images.mjs';
@@ -33,15 +33,21 @@ const ROOT = process.cwd();
 const PORT = Number(process.env.PORT || 3000);
 const ADMIN_DIR = path.join(ROOT, 'public', 'admin');
 const OWNER_EMAIL = String(process.env.CMS_OWNER_EMAIL || 'ia@satma.mx').trim().toLowerCase();
-const DEFAULT_CANONICAL_BASE_URL = String(process.env.CMS_CANONICAL_BASE_URL || process.env.REPLIT_DEPLOYMENT_URL || process.env.BETTER_AUTH_URL || 'https://expresion-juridica-21-st.replit.app').trim().replace(/\/$/, '');
+const PUBLIC_CANONICAL_BASE_URL = 'https://expresionjuridica.com';
+const configuredCanonicalBaseUrl = String(process.env.CMS_CANONICAL_BASE_URL || '').trim();
+const DEFAULT_CANONICAL_BASE_URL = /(?:^|\.)replit\.app(?:\/|$)/i.test(configuredCanonicalBaseUrl) || !configuredCanonicalBaseUrl
+  ? PUBLIC_CANONICAL_BASE_URL
+  : configuredCanonicalBaseUrl.replace(/\/$/, '');
 const cmsPermissionCatalog = ['content', 'media', 'signatures', 'submissions', 'settings', 'users', 'view'];
 const PRESENTATIONS_DIR = path.resolve(DATA_DIR, 'generated-presentations');
 const PRESENTATION_INPUTS_DIR = path.resolve(DATA_DIR, 'presentation-inputs');
+const DOCUMENT_INPUTS_DIR = path.resolve(DATA_DIR, 'document-inputs');
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(MEDIA_DIR, { recursive: true });
 ensurePresentationDir();
 fs.mkdirSync(PRESENTATION_INPUTS_DIR, { recursive: true });
+fs.mkdirSync(DOCUMENT_INPUTS_DIR, { recursive: true });
 
 const defaultSettings = () => ({
   siteName: 'Expresión Jurídica Consultores',
@@ -95,6 +101,11 @@ const defaultStore = () => ({
   settings: defaultSettings()
 });
 
+let canonicalUrlMigrated = false;
+function isReplitCanonicalUrl(value) {
+  try { return /(?:^|\.)replit\.app$/i.test(new URL(String(value || '')).hostname); } catch { return false; }
+}
+
 function mergeSettings(input = {}) {
   const defaults = defaultSettings();
   return {
@@ -112,6 +123,11 @@ function readStore() {
   try {
     const parsed = JSON.parse(fs.readFileSync(STORE_FILE, 'utf8'));
     const base = defaultStore();
+    const settings = mergeSettings(parsed.settings);
+    if (isReplitCanonicalUrl(settings.canonicalBaseUrl)) {
+      settings.canonicalBaseUrl = DEFAULT_CANONICAL_BASE_URL;
+      canonicalUrlMigrated = true;
+    }
     return {
       ...base,
       ...parsed,
@@ -123,7 +139,7 @@ function readStore() {
       signatures: Array.isArray(parsed.signatures) ? parsed.signatures : [],
       presentations: Array.isArray(parsed.presentations) ? parsed.presentations : [],
       rolePermissions: normalizeRolePermissions(parsed.rolePermissions),
-      settings: mergeSettings(parsed.settings)
+      settings
     };
   } catch (error) {
     safeLog('error', 'cms.store.read.failed', error);
@@ -180,6 +196,8 @@ function writeStore({localOnly=false}={}) {
   fs.renameSync(temp, STORE_FILE);
   return localOnly?Promise.resolve():queueStoreUpload(snapshot);
 }
+
+if (canonicalUrlMigrated) await writeStore();
 
 function now() {
   return new Date().toISOString();
@@ -1072,12 +1090,37 @@ const presentationUpload = multer({
   }
 }).fields([{ name: 'documents', maxCount: 20 }, { name: 'supportImages', maxCount: 10 }]);
 
+const documentUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, callback) => callback(null, DOCUMENT_INPUTS_DIR),
+    filename: (_req, _file, callback) => callback(null, crypto.randomUUID())
+  }),
+  limits: { fileSize: MAX_DOCUMENT_FILE_BYTES, files: 20, fields: 8, fieldSize: 200000 },
+  fileFilter: (_req, file, callback) => {
+    const extension = path.extname(file.originalname || '').toLowerCase();
+    const valid = ['.pdf', '.docx'].includes(extension);
+    callback(valid ? null : presentationInputError('Solo se admiten archivos DOCX o PDF.', 'DOCUMENT_FILE_TYPE_INVALID', 422), valid);
+  }
+}).fields([{ name: 'documents', maxCount: 20 }]);
+
 function receivePresentationInputs(req, res, next) {
   if (!req.is('multipart/form-data')) return next();
   presentationUpload(req, res, async error => {
     if (!error) return next();
     await cleanupPresentationInputs(req.files);
     res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 422).json({ error: error.code || 'PRESENTATION_INPUT_INVALID', detail: error.code === 'LIMIT_FILE_SIZE' ? 'Cada archivo debe pesar como máximo 100 MB.' : error.code === 'LIMIT_UNEXPECTED_FILE' ? 'Admite hasta 20 documentos y 10 imágenes de apoyo.' : error.message });
+  });
+}
+
+function receiveDocumentInputs(req, res, next) {
+  if (!req.is('multipart/form-data')) return next();
+  documentUpload(req, res, async error => {
+    if (!error) return next();
+    await cleanupPresentationInputs(req.files);
+    res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : error.code === 'LIMIT_UNEXPECTED_FILE' ? 422 : error.status || 422).json({
+      error: error.code || 'DOCUMENT_INPUT_INVALID',
+      detail: error.code === 'LIMIT_FILE_SIZE' ? 'Cada archivo debe pesar como máximo 100 MB.' : error.code === 'LIMIT_UNEXPECTED_FILE' ? 'Admite hasta 20 documentos.' : error.message
+    });
   });
 }
 
@@ -1176,7 +1219,7 @@ app.get('/api/cms/presentations/:id/file/:kind', requireAuth, async (req, res, n
 });
 
 registerSocialRoutes(app, { store, writeStore, requireAuth, requireEditor, requireCsrf, receivePresentationInputs, audit });
-registerDocumentRoutes(app, { store, writeStore, requireAuth, requireEditor, requireCsrf, audit });
+registerDocumentRoutes(app, { store, writeStore, requireAuth, requireEditor, requireCsrf, receiveDocumentInputs, audit });
 
 app.get('/api/cms/submissions', requireAuth, async (req, res) => {
   await contactRepository.list();

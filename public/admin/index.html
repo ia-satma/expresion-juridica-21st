@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex,nofollow" />
     <title>CMS · Expresión Jurídica</title>
-    <link rel="stylesheet" href="/admin/admin.css?v=20261109-users-table" /><link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/admin/admin.css?v=20261111-cms-fixes" /><link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/social.css?v=20261102-studio" />
-    <link rel="stylesheet" href="/admin/documents.css?v=20261102-contact" />
+    <link rel="stylesheet" href="/admin/documents.css?v=20261111-cms-fixes" />
     <link rel="stylesheet" href="/admin/seo-audit.css?v=20261103" />
-    <link rel="stylesheet" href="/admin/content-editor.css?v=20261103-layout7" />
+    <link rel="stylesheet" href="/admin/content-editor.css?v=20261111-cms-fixes" />
     <link rel="stylesheet" href="/admin/generation-progress.css?v=20261103-layout7" />
     <link rel="stylesheet" href="/admin/studio-refinements.css?v=20261103-layout7" />
   </head>
@@ -69,11 +69,13 @@
           <button class="nav-item" data-view="settings" data-owner-only><span class="nav-glyph">⌘</span>SEO, Analytics y privacidad</button>
           <button class="nav-item" data-view="users" data-owner-only><span class="nav-glyph">♙</span>Usuarios y accesos</button>
         </nav>
-        <div class="sidebar-note">
-          <span class="status-dot"></span>
-          <div><strong>Sitio conectado</strong><small>Los cambios aceptados se guardan en el sitio.</small></div>
+        <div class="sidebar-footer">
+          <div class="sidebar-note">
+            <span class="status-dot"></span>
+            <div><strong>Sitio conectado</strong><small>Los cambios aceptados se guardan en el sitio.</small></div>
+          </div>
+          <button id="logout-button" class="nav-item nav-logout"><span class="nav-glyph">↪</span>Cerrar sesión</button>
         </div>
-        <button id="logout-button" class="nav-item nav-logout"><span class="nav-glyph">↪</span>Cerrar sesión</button>
       </aside>
 
       <main id="main-view" class="main-view" hidden>
@@ -201,10 +203,11 @@
           <div class="view-heading"><div><p class="eyebrow">Estudio editorial EJ</p><h1>Documentos con membrete</h1><p>Pega tu texto, ajústalo en el editor y descarga Word editable o PDF con la hoja membretada de la firma.</p></div></div>
           <div id="documents-config" class="presentation-config" role="status">Comprobando el generador…</div>
           <form id="documents-form" class="panel document-form">
-            <div class="document-form-row"><label for="documents-title"><span>Título (opcional)</span><input id="documents-title" maxlength="180" placeholder="Ej. Propuesta de servicios" /><small>Se agrega al inicio del documento. Puedes editarlo después.</small></label><label for="documents-mode">Cómo preparar el documento<select id="documents-mode"><option value="preserve">Conservar mi texto y aplicar membrete</option><option value="organize">Organizar el texto con Sol</option></select><small>Conservar el texto no consume créditos de IA.</small></label></div>
-            <label for="documents-source">Texto del documento<textarea id="documents-source" rows="12" maxlength="200000" required placeholder="Pega aquí el texto completo que debe aparecer en el documento…"></textarea></label>
+            <div class="document-form-row"><label for="documents-title"><span>Título (opcional)</span><input id="documents-title" maxlength="180" placeholder="Ej. Propuesta de servicios" /><small>Se agrega al inicio del documento. Puedes editarlo después.</small></label><label for="documents-mode">Cómo preparar el documento<select id="documents-mode"><option value="preserve">Conservar mi texto y aplicar membrete</option><option value="organize">Organizar el texto con Sol</option></select><small>Conservar el texto no consume créditos de IA.</small></label><label for="documents-paper-size">Tamaño de hoja<select id="documents-paper-size"><option value="carta">Carta</option><option value="oficio">Oficio</option></select><small>El formato se conserva en Word, PDF y futuras ediciones.</small></label></div>
+            <label for="documents-source">Texto del documento<textarea id="documents-source" rows="12" maxlength="200000" placeholder="Pega aquí el texto completo que debe aparecer en el documento…"></textarea><small>Puedes pegar texto, subir documentos o usar ambas fuentes.</small></label>
+            <div class="document-upload-field"><span class="document-upload-label">Documentos de origen (opcional)</span><label class="button button-secondary document-upload-button" for="documents-files"><span aria-hidden="true">↥</span> Subir DOCX o PDF</label><input id="documents-files" class="document-file-input" type="file" multiple accept=".docx,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf" /><small>Hasta 20 archivos, 100 MB por archivo y 200 MB en total. Los PDF deben tener texto seleccionable.</small><ul id="documents-file-list" class="document-file-list" aria-live="polite"></ul></div>
             <label id="documents-ai-direction" for="documents-instructions" hidden><span>Instrucciones para Sol (opcional)</span><textarea id="documents-instructions" rows="3" maxlength="5000" placeholder="Ej. Organiza por antecedentes, propuesta y próximos pasos. Conserva los nombres, importes y fechas."></textarea><small>Sol organiza el contenido. Revisa el resultado en el editor antes de compartirlo.</small></label>
-            <div class="presentation-submit-row"><button id="documents-prepare" class="button button-primary" type="submit">Crear documento con mi texto</button><small>Hoja original de EJ · Tamaño Carta · Fuentes institucionales · Membrete en cada página</small></div>
+            <div class="presentation-submit-row"><button id="documents-prepare" class="button button-primary" type="submit">Crear documento con mis fuentes</button><small>Hoja original de EJ · Carta u Oficio · Fuentes institucionales · Membrete en cada página</small></div>
           </form>
           <div id="documents-error" class="form-error" role="alert" hidden></div>
           <section id="documents-progress" hidden></section>
@@ -235,7 +238,7 @@
         <section id="settings-view" class="content-view" hidden>
           <div class="view-heading"><div><p class="eyebrow">Configuración global</p><h1>Ajustes del sitio</h1><p>Privacidad, cookies, analítica, SEO, GEO, Search Console y navegación se publican desde este panel.</p></div><button id="save-settings" class="button button-primary" type="button">Guardar ajustes</button></div>
           <form id="settings-form" class="settings-grid">
-            <section class="panel settings-panel"><div class="panel-heading"><div><p class="eyebrow">Identidad</p><h2>General</h2></div></div><div class="settings-fields"><label>Nombre del sitio<input id="setting-site-name" name="siteName" required /></label><label>Descripción SEO<textarea id="setting-site-description" name="siteDescription" rows="3"></textarea></label><label>URL canónica<input id="setting-canonical" name="canonicalBaseUrl" type="url" placeholder="https://tu-dominio.com" /><small class="settings-help">Usa la dirección pública definitiva del sitio. Todas las páginas la usarán para canonical, Open Graph y sitemap.</small></label><label class="check-row"><input id="setting-indexing" name="indexingEnabled" type="checkbox" /><span>Permitir indexación en buscadores<br /><small class="settings-help">Actívalo cuando la URL canónica ya sea la definitiva.</small></span></label></div></section>
+            <section class="panel settings-panel"><div class="panel-heading"><div><p class="eyebrow">Identidad</p><h2>General</h2></div></div><div class="settings-fields"><label>Nombre del sitio<input id="setting-site-name" name="siteName" required /></label><label>Descripción SEO<textarea id="setting-site-description" name="siteDescription" rows="3"></textarea></label><label>URL canónica<input id="setting-canonical" name="canonicalBaseUrl" type="url" placeholder="https://expresionjuridica.com" /><small class="settings-help">La URL pública principal es https://expresionjuridica.com. Todas las páginas la usarán para canonical, Open Graph y sitemap.</small></label><label class="check-row"><input id="setting-indexing" name="indexingEnabled" type="checkbox" /><span>Permitir indexación en buscadores<br /><small class="settings-help">Actívalo cuando la URL canónica ya sea la definitiva.</small></span></label></div></section>
             <section class="panel settings-panel"><div class="panel-heading"><div><p class="eyebrow">SEO técnico</p><h2>Google</h2></div></div><div class="settings-fields"><label>Verificación de Search Console<input id="setting-search-console" name="searchConsoleVerification" placeholder="token de Google" /></label><p class="settings-help">Pega sólo el contenido del atributo de verificación. El CMS lo inserta en todas las páginas.</p><label class="check-row"><input id="setting-analytics-enabled" type="checkbox" /> Activar Google Analytics después del consentimiento</label><label>ID de medición<input id="setting-measurement" name="measurementId" placeholder="G-XXXXXXXXXX" /></label></div></section>
             <section class="panel settings-panel"><div class="panel-heading"><div><p class="eyebrow">Privacidad</p><h2>Aviso único</h2></div></div><div class="settings-fields"><label>Título<input id="setting-cookie-title" /></label><label>Texto del aviso<textarea id="setting-cookie-text" rows="4"></textarea></label><div class="settings-two"><label>Versión<input id="setting-cookie-version" /></label><label>Enlace de privacidad<input id="setting-cookie-privacy" placeholder="/aviso-de-privacidad/" /></label></div><label>Enlace de cookies<input id="setting-cookie-policy" placeholder="/politica-de-cookies/" /></label><div class="settings-two"><label>Botón aceptar<input id="setting-cookie-accept" /></label><label>Botón rechazar<input id="setting-cookie-reject" /></label></div></div></section>
             <section class="panel settings-panel"><div class="panel-heading"><div><p class="eyebrow">GEO / datos estructurados</p><h2>Ubicación y contacto</h2><p class="settings-help">Estos datos alimentan el marcado para buscadores y asistentes: nombre comercial, zona de atención y contacto público.</p></div></div><div class="settings-fields"><label>Nombre comercial<input id="setting-geo-name" /></label><div class="settings-two"><label>Correo<input id="setting-geo-email" type="email" /></label><label>Teléfono<input id="setting-geo-phone" /></label></div><label>Domicilio<input id="setting-geo-street" /></label><div class="settings-three"><label>Ciudad<input id="setting-geo-locality" /></label><label>Estado<input id="setting-geo-region" /></label><label>País<input id="setting-geo-country" /></label></div><div class="settings-two"><label>Latitud<input id="setting-geo-lat" /></label><label>Longitud<input id="setting-geo-lng" /></label></div></div></section>
@@ -310,7 +313,7 @@
 </main>
     </div>
     <div id="toast-region" class="toast-region" aria-live="polite"></div>
-    <script type="module" src="/admin/app.js?v=20261110-studio-errors"></script>
+    <script type="module" src="/admin/app.js?v=20261111-cms-fixes"></script>
     <script src="/admin/seo-audit.js?v=20261103b" defer></script>
   </body>
 </html>
