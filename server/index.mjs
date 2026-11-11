@@ -188,6 +188,18 @@ let store = readStore();
 const userSecurity = createUserSecurity({ database:authDatabase, auth, secret:auth.options.secret, onAudit:(action,detail)=>{audit(action,null,detail);return writeStore();} });
 const contactRepository = createContactRepository(store);
 let inventory = buildInventory();
+const SEO_HOME_TITLE = 'Abogados en Xalapa y Veracruz | Expresión Jurídica';
+const SEO_HOME_TITLE_FIELD = inventory.fields.find(field => field.page === '/' && field.selector.includes('> title') && field.attribute === 'text');
+let seoHomeTitleMigrated = false;
+if (SEO_HOME_TITLE_FIELD) {
+  for (const overrides of [store.draftOverrides, store.publishedOverrides]) {
+    const current = overrides[SEO_HOME_TITLE_FIELD.id];
+    if (typeof current === 'string' && /Litigio estratégico|Asesoría jurídica|Abogados\s*\|\s*Juicios/i.test(current) && current !== SEO_HOME_TITLE) {
+      overrides[SEO_HOME_TITLE_FIELD.id] = SEO_HOME_TITLE;
+      seoHomeTitleMigrated = true;
+    }
+  }
+}
 
 function writeStore({localOnly=false}={}) {
   const temp = `${STORE_FILE}.tmp`;
@@ -197,7 +209,7 @@ function writeStore({localOnly=false}={}) {
   return localOnly?Promise.resolve():queueStoreUpload(snapshot);
 }
 
-if (canonicalUrlMigrated) await writeStore();
+if (canonicalUrlMigrated || seoHomeTitleMigrated) await writeStore();
 
 function now() {
   return new Date().toISOString();
