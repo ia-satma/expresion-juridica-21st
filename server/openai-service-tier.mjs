@@ -2,6 +2,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 // Fast is an API service tier; it does not select a different model or reasoning level.
 const TEXT_ENDPOINTS=new Set(['/responses','/chat/completions']);
+const IMAGE_ENDPOINTS=new Set(['/images/generations']);
 const PARAMETER_REJECTIONS=new Set(['unknown_parameter','unsupported_parameter','unrecognized_parameter']);
 const VALUE_REJECTIONS=new Set(['unsupported_value','invalid_value','unsupported_service_tier']);
 const QUOTA_ERRORS=new Set([
@@ -27,6 +28,9 @@ async function sendThroughQueue(send, payload, signal, retryUntil = Infinity) {
 }
 export function isTextEndpoint(endpoint) {
   return TEXT_ENDPOINTS.has(String(endpoint).split('?')[0].replace(/\/+$/,''));
+}
+function isImageEndpoint(endpoint) {
+  return IMAGE_ENDPOINTS.has(String(endpoint).split('?')[0].replace(/\/+$/,''));
 }
 export function textServiceTier(env=process.env) {
   return String(env.OPENAI_TEXT_SERVICE_TIER||'fast').trim().toLowerCase()==='default'?'default':'fast';
@@ -71,13 +75,17 @@ function providerFailure(status,result,retryAfter) {
   if (Number.isFinite(seconds) && seconds > 0) failure.retryAfterSeconds = Math.ceil(seconds);
   return failure;
 }
-function retryDelay(response) {
+function retryDelay(response, endpoint) {
   if (response.ok || !isTemporaryCapacityError(response.status, response.result)) return null;
   const header = response.retryAfter?.trim();
   const advisedDelay = !header ? NaN
     : /^\d+(?:\.\d+)?$/.test(header) ? Number(header) * 1_000 : Date.parse(header) - Date.now();
-  const delay = Number.isNaN(advisedDelay) ? 750 + Math.random() * 250 : Math.max(0, advisedDelay);
-  return delay <= 30_000 ? delay : null;
+  // Image generation can advertise a longer provider cooldown than text. Honor
+  // it up to the request timeout so the UI does not fail while the queue cools.
+  const delay = Number.isNaN(advisedDelay)
+    ? (isImageEndpoint(endpoint) ? 3_000 + Math.random() * 1_000 : 750 + Math.random() * 250)
+    : Math.max(0, advisedDelay);
+  return delay <= (isImageEndpoint(endpoint) ? 120_000 : 30_000) ? delay : null;
 }
 export async function requestWithTextServiceTier(endpoint,body,send,{env=process.env,signal,retryUntil=Infinity}={}) {
   const text=isTextEndpoint(endpoint),requested=text?textServiceTier(env):null;
@@ -85,7 +93,7 @@ export async function requestWithTextServiceTier(endpoint,body,send,{env=process
   let retried = false;
   async function execute(payload) {
     const response = await sendThroughQueue(send, payload, signal, retryUntil);
-    const delay = retried ? null : retryDelay(response);
+    const delay = retried ? null : retryDelay(response, endpoint);
     if (delay === null || Date.now() + delay >= retryUntil) return response;
     retried = true;
     await sleep(delay, undefined, { signal });
