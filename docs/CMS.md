@@ -14,11 +14,11 @@ Abre `http://localhost:3000/admin/`. En el primer arranque, la primera cuenta qu
 
 ## Actualizar Replit
 
-Después de un `git push`, abre el panel `Git` de Replit, ejecuta `Fetch` y `Pull`, y luego `Republish` para que el dominio publicado use el mismo commit. La configuración de producción debe conservar `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` y `CMS_OWNER_EMAIL` en Secrets/Configurations.
+Después de un `git push`, abre el panel `Git` de Replit, ejecuta `Fetch` y `Pull`, y luego `Republish` para que el dominio publicado use el mismo commit. La configuración de producción debe conservar `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `CMS_AUTH_ALLOWED_HOSTS` y `CMS_OWNER_EMAIL` en Secrets/Configurations.
 
 ## Autenticación
 
-El login usa Better Auth con email y contraseña, sesiones persistentes en SQLite (`data/auth.sqlite`) y un secreto en `BETTER_AUTH_SECRET`. La ruta de Better Auth es `/api/auth/*`; el CMS consulta `/api/cms/auth-state` para resolver el rol editorial. En producción, define `BETTER_AUTH_SECRET` y `BETTER_AUTH_URL` en Replit Secrets.
+El login usa Better Auth con email y contraseña. En producción, las credenciales, sesiones y límites de acceso se conservan en PostgreSQL. La ruta de Better Auth es `/api/auth/*`; el CMS consulta `/api/cms/auth-state` para resolver el rol editorial. Define `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` y `CMS_AUTH_ALLOWED_HOSTS` en Replit Secrets. Better Auth resuelve el host y la cookie por solicitud dentro de esa lista, de modo que el acceso funciona desde cada dominio conectado.
 
 El primer registro de `ia@satma.mx` se convierte en `owner` (puedes cambiarlo con `CMS_OWNER_EMAIL`). Desde `Ajustes → Usuarios` el propietario puede crear cuentas y asignar `owner`, `editor` o `viewer`; el plugin Admin de Better Auth conserva el rol de autenticación, las sesiones y el estado bloqueado. El servidor impide editar, publicar, subir medios o modificar configuración sin el rol correspondiente.
 

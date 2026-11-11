@@ -8,6 +8,7 @@ import { admin as adminPlugin } from 'better-auth/plugins';
 import { AUTH_DB_FILE, DATA_DIR, SECRET_FILE } from './data-paths.mjs';
 import { hostedHttps } from './web-security.mjs';
 import { privateAuthLogger, safeLog } from './security-logging.mjs';
+import { authAllowedHosts } from './auth-hosts.mjs';
 
 const authConnectionString = process.env.CMS_AUTH_DATABASE_URL?.trim()
   || (process.env.CMS_AUTH_STORAGE === 'postgres' ? process.env.DATABASE_URL?.trim() : '');
@@ -71,15 +72,13 @@ export async function findAuthUserByEmail(email) {
   return authDatabase.prepare(sql + '?').get(normalized);
 }
 
-const baseUrl = process.env.BETTER_AUTH_URL || process.env.REPLIT_DEPLOYMENT_URL || `http://localhost:${process.env.PORT || 3000}`;
-const trustedOrigins = [baseUrl, 'https://expresion-juridica-21-st.replit.app', process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null, process.env.REPLIT_DEPLOYMENT_URL].filter(Boolean);
+const allowedHosts = authAllowedHosts();
 export const auth = betterAuth({
   logger: privateAuthLogger,
   database: authDatabase,
   secret: authSecret(),
-  baseURL: baseUrl,
+  baseURL: { allowedHosts, protocol: process.env.NODE_ENV === 'production' ? 'https' : 'auto' },
   basePath: '/api/auth',
-  trustedOrigins,
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,

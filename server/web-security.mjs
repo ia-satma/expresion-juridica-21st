@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { load } from 'cheerio';
 import { publicFailure, withLogContext } from './security-logging.mjs';
+import { authAllowedOrigins } from './auth-hosts.mjs';
 
 export function hostedHttps(env = process.env) {
   return env.NODE_ENV === 'production' || Boolean(env.REPL_ID || env.REPLIT_DEPLOYMENT_URL || env.REPLIT_DEV_DOMAIN) || /^https:\/\//i.test(env.BETTER_AUTH_URL || '');
@@ -50,7 +51,7 @@ function origin(value) { try { return new URL(value).origin; } catch { return nu
 
 export function securityMiddleware({ root = process.cwd(), getCanonicalBase = () => 'https://expresion-juridica-21-st.replit.app', env = process.env } = {}) {
   const secure = hostedHttps(env), policy = contentSecurityPolicy(root, secure);
-  const configuredOrigins = [env.BETTER_AUTH_URL, env.REPLIT_DEPLOYMENT_URL, env.REPLIT_DEV_DOMAIN ? `https://${env.REPLIT_DEV_DOMAIN}` : null, ...(!secure ? [`http://localhost:${env.PORT || 3000}`, `http://127.0.0.1:${env.PORT || 3000}`] : [])].map(origin).filter(Boolean);
+  const configuredOrigins = authAllowedOrigins(env);
   return (req, res, next) => {
     const privateRoute = /^\/(?:admin|api)(?:\/|$)/.test(req.path) && req.path !== '/api/cms/public' && req.path !== '/api/public/contact';
     const setHeader = res.setHeader.bind(res);
