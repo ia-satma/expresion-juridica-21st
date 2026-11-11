@@ -46,7 +46,11 @@ export async function openaiRequest(endpoint, body, timeout = 120000) {
       let result;try{result=await response.json();}catch{throw new Error('OPENAI_RESPONSE_INVALID');}
       return {ok:response.ok,status:response.status,result,retryAfter:response.headers?.get('retry-after')};
     }, { signal: ctl.signal, retryUntil });
-  } catch (error) { throw new Error(error.name === 'AbortError' ? 'OPENAI_TIMEOUT' : /^OPENAI_[a-zA-Z0-9_-]{1,100}$/.test(error.message||'')?error.message:'OPENAI_REQUEST_FAILED'); }
+  } catch (error) {
+    const failure = new Error(error.name === 'AbortError' ? 'OPENAI_TIMEOUT' : /^OPENAI_[a-zA-Z0-9_-]{1,100}$/.test(error.message || '') ? error.message : 'OPENAI_REQUEST_FAILED');
+    if (Number.isFinite(error.retryAfterSeconds)) failure.retryAfterSeconds = error.retryAfterSeconds;
+    throw failure;
+  }
   finally { clearTimeout(timer); }
 }
 async function outline({ topic, source, count, language, includeVisuals, webSearch }) {

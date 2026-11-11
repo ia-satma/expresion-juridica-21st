@@ -8,6 +8,23 @@ const QUOTA_ERRORS=new Set([
   'insufficient_quota', 'credit_balance_exhausted', 'organization_spend_limit_exceeded',
   'project_spend_limit_exceeded', 'organization_usage_limit_exceeded'
 ]);
+let requestTail = Promise.resolve();
+let lastRequestStartedAt = 0;
+const requestIntervalMs = () => Math.max(0, Number(process.env.OPENAI_MIN_REQUEST_INTERVAL_MS || 700));
+async function sendThroughQueue(send, payload, signal, retryUntil = Infinity) {
+  const previous = requestTail;
+  let release;
+  requestTail = new Promise(resolve => { release = resolve; });
+  await previous;
+  try {
+    const wait = Math.max(0, requestIntervalMs() - (Date.now() - lastRequestStartedAt));
+    if (wait && Date.now() + wait < retryUntil) await sleep(wait, undefined, { signal });
+    lastRequestStartedAt = Date.now();
+    return await send(payload);
+  } finally {
+    release();
+  }
+}
 export function isTextEndpoint(endpoint) {
   return TEXT_ENDPOINTS.has(String(endpoint).split('?')[0].replace(/\/+$/,''));
 }
@@ -40,14 +57,19 @@ function isTemporaryCapacityError(status,result) {
   }
   return status === 503 && code === 'server_is_overloaded';
 }
-function providerFailure(status,result) {
+function providerFailure(status,result,retryAfter) {
+  let failure;
   if (status === 429) {
-    if (isQuotaError(result)) return new Error('OPENAI_INSUFFICIENT_QUOTA');
-    return new Error(isTemporaryCapacityError(status,result) ? 'OPENAI_RATE_LIMIT_EXCEEDED' : 'OPENAI_HTTP_429');
+    if (isQuotaError(result)) failure = new Error('OPENAI_INSUFFICIENT_QUOTA');
+    else failure = new Error(isTemporaryCapacityError(status,result) ? 'OPENAI_RATE_LIMIT_EXCEEDED' : 'OPENAI_HTTP_429');
+  } else if (status === 503 && isTemporaryCapacityError(status,result)) failure = new Error('OPENAI_SERVER_OVERLOADED');
+  else {
+    const code=String(result?.error?.code||'');
+    failure = new Error(`OPENAI_${/^[a-zA-Z0-9_-]{1,80}$/.test(code)?code:`HTTP_${status}`}`);
   }
-  if (status === 503 && isTemporaryCapacityError(status,result)) return new Error('OPENAI_SERVER_OVERLOADED');
-  const code=String(result?.error?.code||'');
-  return new Error(`OPENAI_${/^[a-zA-Z0-9_-]{1,80}$/.test(code)?code:`HTTP_${status}`}`);
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds) && seconds > 0) failure.retryAfterSeconds = Math.ceil(seconds);
+  return failure;
 }
 function retryDelay(response) {
   if (response.ok || !isTemporaryCapacityError(response.status, response.result)) return null;
@@ -55,19 +77,19 @@ function retryDelay(response) {
   const advisedDelay = !header ? NaN
     : /^\d+(?:\.\d+)?$/.test(header) ? Number(header) * 1_000 : Date.parse(header) - Date.now();
   const delay = Number.isNaN(advisedDelay) ? 750 + Math.random() * 250 : Math.max(0, advisedDelay);
-  return delay <= 8_000 ? delay : null;
+  return delay <= 30_000 ? delay : null;
 }
 export async function requestWithTextServiceTier(endpoint,body,send,{env=process.env,signal,retryUntil=Infinity}={}) {
   const text=isTextEndpoint(endpoint),requested=text?textServiceTier(env):null;
   const requestedBody=applyTextServiceTier(endpoint,body,env);
   let retried = false;
   async function execute(payload) {
-    const response = await send(payload);
+    const response = await sendThroughQueue(send, payload, signal, retryUntil);
     const delay = retried ? null : retryDelay(response);
     if (delay === null || Date.now() + delay >= retryUntil) return response;
     retried = true;
     await sleep(delay, undefined, { signal });
-    return send(payload);
+    return sendThroughQueue(send, payload, signal, retryUntil);
   }
   let response=await execute(requestedBody),fallback=false;
   if(!response.ok&&shouldRetryStandardTier(endpoint,requestedBody,response.status,response.result)) {
@@ -78,7 +100,7 @@ export async function requestWithTextServiceTier(endpoint,body,send,{env=process
     else standard.service_tier='default';
     fallback=true;response=await execute(standard);
   }
-  if(!response.ok)throw providerFailure(response.status,response.result);
+  if(!response.ok)throw providerFailure(response.status,response.result,response.retryAfter);
   if(!text)return response.result;
   return {...response.result,serviceTier:{requested,served:typeof response.result?.service_tier==='string'?response.result.service_tier:null,fallback}};
 }

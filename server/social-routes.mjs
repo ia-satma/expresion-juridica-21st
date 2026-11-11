@@ -31,7 +31,8 @@ export function registerSocialRoutes(app, { store, writeStore, requireAuth, requ
     return {
       id: job.id, state: job.state, stage: job.stage, created: job.created, message: job.message,
       completed: job.completed, total: job.total, result: job.result || null, error: failure?.error || null,
-      ...(failure ? { detail: failure.detail } : {})
+      ...(failure ? { detail: failure.detail } : {}),
+      ...(Number.isFinite(job.retryAfterSeconds) ? { retryAfterSeconds: job.retryAfterSeconds } : {})
     };
   };
   const ownerKey = req => crypto.createHash('sha256').update(userKey(req)).digest('hex');
@@ -92,7 +93,7 @@ export function registerSocialRoutes(app, { store, writeStore, requireAuth, requ
       await persistJob(job, true);
     }).catch(async error => {
       safeLog('error', 'social.generation.failed', error);
-      Object.assign(job, { state: 'failed', message: 'No se pudo completar la generación', error: safeErrorCode(error, 'POST_GENERATION_FAILED'), finished: Date.now() });
+      Object.assign(job, { state: 'failed', message: 'No se pudo completar la generación', error: safeErrorCode(error, 'POST_GENERATION_FAILED'), retryAfterSeconds: error.retryAfterSeconds, finished: Date.now() });
       await persistJob(job, true).catch(failure => console.error('[social-job-state]', failure.message));
     }).finally(() => clearInterval(heartbeat));
     return job;

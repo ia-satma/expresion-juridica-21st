@@ -81,11 +81,12 @@ export function publicFailure(error, fallback = 'INTERNAL_ERROR') {
   else if (code === 'POST_RENDER_PENDING') detail = 'El texto está guardado. Ajusta o revisa el diseño antes de descargar esta revisión.';
   else if (/OPENAI_(INVALID_API_KEY|HTTP_401|HTTP_403)$/.test(code)) detail = 'El proveedor de IA rechazó las credenciales configuradas en el servidor.';
   else if (code === 'OPENAI_INSUFFICIENT_QUOTA') detail = 'El proyecto de OpenAI alcanzó su límite de saldo o gasto. Revisa la facturación y los límites del proyecto antes de volver a generar.';
-  else if (code === 'OPENAI_RATE_LIMIT_EXCEEDED' || code === 'OPENAI_HTTP_429') detail = 'OpenAI alcanzó el límite temporal de solicitudes o tokens. Espera unos minutos antes de volver a generar. Si se repite, revisa los límites del proyecto de OpenAI.';
+  else if (code === 'OPENAI_RATE_LIMIT_EXCEEDED') detail = Number.isFinite(error?.retryAfterSeconds) ? `OpenAI pidió esperar ${Math.ceil(error.retryAfterSeconds / 60)} minutos antes de volver a generar.` : 'OpenAI alcanzó el límite temporal de solicitudes o tokens. Espera unos minutos antes de volver a generar. Si se repite, revisa los límites del proyecto de OpenAI.';
+  else if (code === 'OPENAI_HTTP_429') detail = 'OpenAI rechazó la solicitud por un límite del proyecto. Revisa la facturación y los límites del proyecto antes de volver a generar.';
   else if (code === 'OPENAI_SERVER_OVERLOADED') detail = 'El modelo de OpenAI está ocupado. Espera unos minutos antes de volver a generar.';
   else if (code === 'OPENAI_TIMEOUT') detail = 'La generación tardó más de lo previsto. Vuelve a intentarlo.';
   else if (code.startsWith('APP_STORAGE_') || code === 'STUDIO_STORAGE_UNAVAILABLE') detail = 'El almacenamiento no está disponible. Vuelve a intentarlo en unos momentos.';
-  return { error: code, detail, ...(requestReference() ? { requestId: requestReference() } : {}) };
+  return { error: code, detail, ...(Number.isFinite(error?.retryAfterSeconds) ? { retryAfterSeconds: error.retryAfterSeconds } : {}), ...(requestReference() ? { requestId: requestReference() } : {}) };
 }
 
 export const privateAuthLogger = {

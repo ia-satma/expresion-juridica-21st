@@ -13,7 +13,8 @@ export function createStudioJobs(namespace, serialize = value => value, failureC
     return {
       id: job.id, state: job.state, stage: job.stage, created: job.created, message: job.message,
       completed: job.completed, total: job.total, result: job.result || null, error: failure?.error || null,
-      ...(failure ? { detail: failure.detail } : {})
+      ...(failure ? { detail: failure.detail } : {}),
+      ...(Number.isFinite(job.retryAfterSeconds) ? { retryAfterSeconds: job.retryAfterSeconds } : {})
     };
   };
   function persist(job, force = false) {
@@ -56,7 +57,7 @@ export function createStudioJobs(namespace, serialize = value => value, failureC
       await persist(job, true);
     }).catch(async error => {
       safeLog('error', 'studio.generation.failed', error);
-      Object.assign(job, { state: 'failed', message: 'No se pudo completar la generación', error: publicFailure(error, failureCode).error, finished: Date.now() });
+      Object.assign(job, { state: 'failed', message: 'No se pudo completar la generación', error: publicFailure(error, failureCode).error, retryAfterSeconds: error.retryAfterSeconds, finished: Date.now() });
       await persist(job, true).catch(failure => console.error('[studio-job-state]', failure.message));
     }).finally(() => { clearInterval(heartbeat); setTimeout(() => jobs.delete(job.id), 3600000).unref(); });
     return payload(job);
